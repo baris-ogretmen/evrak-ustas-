@@ -254,7 +254,7 @@
     <p>Gelen evrakı yükle · ne istendiğini çöz · belgeyi kusursuz hazırla</p>
   </div>
   <div class="spacer"></div>
-  <div class="kurumchip" id="kurumChip" onclick="kurumAyarAc()">🏫 Kurum bilgisi ekle</div>
+  <div class="kurumchip" id="kurumChip" onclick="kurumAyarAc()">👤 Profil ekle</div>
 </div></header>
 
 <nav class="tabs"><div class="wrap" id="tabWrap">
@@ -270,7 +270,7 @@
   <section class="view act" id="v-gelen">
     <div class="hero">
       <h2>📥 Gelen evrakı çözümle</h2>
-      <p>Milli Eğitim Bakanlığı, İl/İlçe Milli Eğitim'den gelen yazıyı (PDF, fotoğraf ya da metin) yükle. Asistan belgeyi okur; <b>ne istendiğini, son tarihi, hangi belgeyi hazırlaman gerektiğini</b> çıkarır ve tek tıkla o belgeyi oluşturur.</p>
+      <p>MEB / İl / İlçe Milli Eğitim'den gelen yazıyı (PDF, fotoğraf ya da metin) yükle. Asistan belgeyi okur; <b>seni ilgilendiriyor mu, hangi görevini, senden ne isteniyor</b> çıkarır. İlgiliyse istenen belgeyi <b>otomatik senin adına</b> hazırlar ve gerekiyorsa <b>doğru portala yönlendirir</b>.</p>
     </div>
 
     <div class="drop" id="drop">
@@ -332,25 +332,27 @@
 </div></div>
 
 <!-- ==== Kurum bilgileri modalı ==== -->
-<div class="overlay" id="ovKurum"><div class="modal" style="max-width:560px">
-  <div class="mhead"><h3>🏫 Kurum &amp; kişi bilgileri</h3><button onclick="kurumKapat()">×</button></div>
+<div class="overlay" id="ovKurum"><div class="modal" style="max-width:600px">
+  <div class="mhead"><h3>👤 Profil &amp; görevlerim</h3><button onclick="kurumKapat()">×</button></div>
   <div class="mbody">
-    <p class="note">Bu bilgiler her belgeye otomatik işlenir. Bir kez gir, yıllarca kullan.</p>
+    <p class="note">Bu bilgiler her belgeye otomatik işlenir ve gelen evrakın <b>seni ilgilendirip ilgilendirmediğini</b> belirlemekte kullanılır. Bir kez gir, yıllarca kullan.</p>
     <div class="row two">
-      <div><label class="fl">Okul / kurum adı</label><input id="kOkul" placeholder="Özel Değişim Koleji"></div>
-      <div><label class="fl">İl / İlçe</label><input id="kIlce" placeholder="Örn: Konya / Selçuklu"></div>
+      <div><label class="fl">Ad soyad</label><input id="kAd" placeholder="Barış ..."></div>
+      <div><label class="fl">İl / İlçe</label><input id="kIl" placeholder="Örn: Konya / Selçuklu"></div>
     </div>
     <div class="row two">
-      <div><label class="fl">Müdür adı soyadı</label><input id="kMudur" placeholder="Okul Müdürü"></div>
-      <div><label class="fl">Senin adın soyadın</label><input id="kAd" placeholder="Barış ..."></div>
-    </div>
-    <div class="row two">
-      <div><label class="fl">Unvanın / branşın</label><input id="kUnvan" placeholder="Bilişim / Robotik-Kodlama Öğretmeni"></div>
+      <div><label class="fl">Telefon / e-posta</label><input id="kIletisim" placeholder="0(5xx)... / e-posta"></div>
       <div><label class="fl">Kurum kodu (varsa)</label><input id="kKurumKodu" placeholder="Örn: 123456"></div>
     </div>
-    <label class="fl">Telefon / e-posta (dilekçe altına)</label>
-    <input id="kIletisim" placeholder="0(5xx)... / eposta">
-    <div class="btnrow"><button class="btn pri" onclick="kurumKaydet()">💾 Kaydet</button></div>
+    <label class="fl">Değişim Koleji müdürü (resmi yazılar için)</label>
+    <input id="kMudur" placeholder="Okul Müdürü adı soyadı">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin:16px 0 6px">
+      <label class="fl" style="margin:0">🎓 Görevlerim</label>
+      <button class="btn gh sm" onclick="gorevSatirEkle()">+ Görev ekle</button>
+    </div>
+    <div id="gorevKutu"></div>
+    <div class="btnrow"><button class="btn pri" onclick="kurumKaydet()">💾 Kaydet</button>
+      <button class="btn gh" onclick="profilVarsayilana()">↩︎ Bana göre varsayılana dön</button></div>
   </div>
 </div></div>
 
@@ -417,29 +419,36 @@ function keysSave(txt){
   localStorage.setItem(LS.keys, arr.join('\n')); RING.keys=arr; RING.i=0; return arr;
 }
 
-/* 2) Canlı model keşfi ----------------------------------------- */
+/* 2) Canlı model keşfi (kendi kendine onaran) ------------------- */
+const EMEKLI = /^gemini-1\.|^gemini-1\.5|^gemini-pro$|^chat-bison|^text-bison/i;
 let MODEL = localStorage.getItem(LS.model) || 'gemini-2.5-flash';
+// Kayıtlı model emekli/eski ise SİL → ilk çağrıda otomatik yeniden keşfedilir
+if(EMEKLI.test(MODEL)){ MODEL='gemini-2.5-flash'; localStorage.removeItem(LS.model); }
+let modelTazelendi=false; // 404 sonrası tek seferlik otomatik onarım bayrağı
 const LATEST_MAP = {
   'gemini-flash-latest':'gemini-2.5-flash',
   'gemini-pro-latest':'gemini-2.5-pro',
   'gemini-flash-lite-latest':'gemini-2.5-flash-lite'
 };
-async function modelKesfet(){
-  const k = ringKey(); if(!k) return;
+async function modelKesfet(force){
+  const k = ringKey(); if(!k) return false;
   try{
     const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+k);
-    if(!r.ok) return;
+    if(!r.ok) return false;
     const d = await r.json();
     const usable = (d.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent'))
-      .map(m=>m.name.replace('models/',''));
+      .map(m=>m.name.replace('models/','')).filter(n=>!EMEKLI.test(n));
     // 'latest' takma adlarını kanonik isme eşle
-    const norm = usable.map(n=>LATEST_MAP[n]||n);
-    if(norm.length && !norm.includes(MODEL)){
-      const pref = norm.find(n=>n.includes('2.5-flash')&&!n.includes('lite')) || norm.find(n=>n.includes('flash')) || norm[0];
-      if(pref){ MODEL=pref; localStorage.setItem(LS.model,MODEL); }
+    const norm = [...new Set(usable.map(n=>LATEST_MAP[n]||n))];
+    window._modelListesi = norm;
+    // Kayıtlı model listede yoksa ya da zorla yenileniyorsa en iyi çalışanı seç
+    if(norm.length && (force || !norm.includes(MODEL))){
+      const pref = norm.find(n=>/2\.5-flash$/.test(n)) || norm.find(n=>n.includes('flash')&&!n.includes('lite'))
+        || norm.find(n=>n.includes('flash')) || norm[0];
+      if(pref){ MODEL=pref; localStorage.setItem(LS.model,MODEL); return true; }
     }
-    window._modelListesi = [...new Set(norm)];
-  }catch(e){}
+    return norm.includes(MODEL);
+  }catch(e){ return false; }
 }
 
 /* 3) Akıllı hata yönetimi -------------------------------------- */
@@ -448,7 +457,7 @@ function hataMetni(status, body){
   if(status===400 && b.includes('api key not valid')) return 'Geçersiz API anahtarı — bu anahtar silinip yenisi alınmalı.';
   if(status===400 && b.includes('invalid')) return 'İstek biçimi hatalı — otomatik düzeltilip yeniden denendi.';
   if(status===401||status===403) return 'Yetkisiz/geçersiz anahtar — anahtarı sil, aistudio.google.com/apikey adresinden yenisini al.';
-  if(status===404) return 'Model bulunamadı — Ayarlar\'dan model listesini yenile.';
+  if(status===404) return 'Model bulunamadı ve otomatik onarım da başarısız oldu. Lütfen anahtarının Generative Language (Gemini) API erişiminin açık olduğunu kontrol et.';
   if(status===429) return 'Kota doldu (dakikalık/günlük). Başka anahtar denenecek ya da biraz sonra tekrar dene.';
   if(status===503) return 'Sunucu meşgul (503) — biraz sonra yeniden dene.';
   return 'Bir hata oluştu ('+status+'). İnternet ve anahtarı kontrol et.';
@@ -485,6 +494,7 @@ async function generateContent(parts, {onChunk, system}={}){
       const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(!r.ok){
         const tx = await r.text(); lastErr = hataMetni(r.status,tx);
+        if(r.status===404 && !modelTazelendi){ modelTazelendi=true; const ok=await modelKesfet(true); if(ok){ t--; continue; } }
         if(r.status===400 && /thinking|responseModalities/i.test(tx)){
           delete body.generationConfig.thinkingConfig;
         }
@@ -514,7 +524,9 @@ async function generateContent(parts, {onChunk, system}={}){
       try{
         const url='https://generativelanguage.googleapis.com/v1beta/models/'+MODEL+':generateContent?key='+key;
         const r2=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-        if(!r2.ok){ const tx=await r2.text(); lastErr=hataMetni(r2.status,tx); ringNext(); continue; }
+        if(!r2.ok){ const tx=await r2.text(); lastErr=hataMetni(r2.status,tx);
+          if(r2.status===404 && !modelTazelendi){ modelTazelendi=true; const ok=await modelKesfet(true); if(ok){ t--; continue; } }
+          ringNext(); continue; }
         const d=await r2.json();
         const tx=d?.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
         if(tx){ onChunk&&onChunk(tx); return tx; }
@@ -697,22 +709,40 @@ function ekranDondur(){
    UYGULAMA MANTIĞI
    ============================================================ */
 function toast(m){const t=document.getElementById('toast');const e=document.createElement('div');e.className='toast';e.textContent=m;t.appendChild(e);setTimeout(()=>e.remove(),2600);}
-function kurumGet(){try{return JSON.parse(localStorage.getItem(LS.kurum)||'{}');}catch(e){return{};}}
+const PROFIL_VARSAYILAN={
+  ad:'', iletisim:'', il:'', ilce:'', mudur:'', kurumKodu:'',
+  gorevler:[
+    {unvan:'Okul Öncesi Öğretmeni', kurum:'Özel Değişim Koleji', kademe:'Anaokulu', dersler:'Okul öncesi eğitim', asil:true},
+    {unvan:'Bilişim / Yapay Zekâ - Robotik - Kodlama - Satranç - Akıl ve Zekâ Oyunları Öğretmeni', kurum:'Özel Değişim Koleji', kademe:'İlkokul ve Ortaokul', dersler:'Yapay zekâ, robotik, kodlama, satranç, akıl ve zekâ oyunları', asil:false},
+    {unvan:'Uzman Öğretici', kurum:'Mavi İklim Özel Eğitim ve Rehabilitasyon Merkezi', kademe:'Özel eğitim / rehabilitasyon', dersler:'', asil:false}
+  ]
+};
+function kurumGet(){try{const o=JSON.parse(localStorage.getItem(LS.kurum)||'null');return o||{};}catch(e){return{};}}
+function kurumSeed(){ if(!localStorage.getItem(LS.kurum)) localStorage.setItem(LS.kurum,JSON.stringify(PROFIL_VARSAYILAN)); }
+function gorevler(){const k=kurumGet();return Array.isArray(k.gorevler)?k.gorevler:[];}
+function asilGorev(){const g=gorevler();return g.find(x=>x.asil)||g[0]||null;}
+
 function kurumMetni(){
-  const k=kurumGet();
-  const p=[];
-  if(k.okul)p.push('Okul/Kurum: '+k.okul);
-  if(k.ilce)p.push('İl/İlçe: '+k.ilce);
-  if(k.mudur)p.push('Müdür: '+k.mudur);
-  if(k.ad)p.push('Belgeyi hazırlayan: '+k.ad);
-  if(k.unvan)p.push('Unvan/Branş: '+k.unvan);
-  if(k.kurumKodu)p.push('Kurum kodu: '+k.kurumKodu);
+  const k=kurumGet();const p=[];
+  if(k.ad)p.push('Ad soyad: '+k.ad);
+  if(k.il||k.ilce)p.push('İl/İlçe: '+[k.il,k.ilce].filter(Boolean).join(' / '));
   if(k.iletisim)p.push('İletişim: '+k.iletisim);
-  return p.length?('KURUM BİLGİLERİ (belgeye uygun şekilde işle):\n'+p.join('\n')):'Kurum bilgileri girilmemiş; belgede yer tutucu [Okul Adı], [İl/İlçe], [Müdür Adı] bırak.';
+  if(k.kurumKodu)p.push('Kurum kodu: '+k.kurumKodu);
+  const g=gorevler();
+  if(g.length){
+    p.push('GÖREVLER (her belgede DOĞRU görevi/kurumu/unvanı kullan):');
+    g.forEach((x,i)=>{
+      p.push('  '+(i+1)+') '+x.unvan+(x.asil?' (ASIL BRANŞ)':'')+' — '+x.kurum+(x.kademe?(' · '+x.kademe):'')+(x.dersler?(' · Dersler: '+x.dersler):'')+(x.kurum&&/değişim/i.test(x.kurum)&&k.mudur?(' · Müdür: '+k.mudur):''));
+    });
+  }
+  return p.length?('KİŞİ & GÖREV PROFİLİ:\n'+p.join('\n')+'\nBelgeyi bu kişi adına, ilgili göreve uygun unvan ve kurumla düzenle. Eksik bilgi için [köşeli parantez] yer tutucu bırak, uydurma.')
+    :'Profil girilmemiş; belgede [Ad Soyad], [Okul], [Unvan] yer tutucuları bırak.';
 }
 function kurumChipCiz(){
   const k=kurumGet();const c=document.getElementById('kurumChip');
-  if(k.okul){c.textContent='🏫 '+k.okul;}else{c.textContent='🏫 Kurum bilgisi ekle';}
+  if(k.ad){c.textContent='👤 '+k.ad;}
+  else if(gorevler().length){c.textContent='👤 Profilim ('+gorevler().length+' görev)';}
+  else{c.textContent='👤 Profil ekle';}
 }
 
 /* ---- Sekme geçişi ---- */
@@ -756,6 +786,24 @@ function chipCiz(){
 function dosyaSil(i){yuklenenDosyalar.splice(i,1);chipCiz();}
 function gelenTemizle(){yuklenenDosyalar=[];chipCiz();document.getElementById('gelenMetin').value='';document.getElementById('analizSonuc').innerHTML='';}
 
+/* Resmi portal/link kayıt defteri — evrak bir portala yönlendiriyorsa buradan link verilir */
+const PORTALLAR={
+  dys:{ad:'DYS — Doküman Yönetim Sistemi',url:'https://dys.meb.gov.tr',ac:'Resmi yazı gönderme/alma akışı'},
+  mebbis:{ad:'MEBBİS',url:'https://mebbis.meb.gov.tr',ac:'Personel ve modül işlemleri'},
+  eokul:{ad:'e-Okul',url:'https://e-okul.meb.gov.tr',ac:'Öğrenci işlemleri'},
+  eba:{ad:'EBA',url:'https://www.eba.gov.tr',ac:'Eğitim içerikleri / etkinlik'},
+  oba:{ad:'ÖBA — Öğretmen Bilişim Ağı',url:'https://oba.meb.gov.tr',ac:'Öğretmen işlemleri / mesleki gelişim'},
+  ozel:{ad:'Özel Öğretim Kurumları GM',url:'https://ookgm.meb.gov.tr',ac:'Özel okul/rehabilitasyon işlemleri'},
+  meb:{ad:'MEB Resmi Sitesi',url:'https://www.meb.gov.tr',ac:'Genel duyuru/mevzuat'},
+  edevlet:{ad:'e-Devlet',url:'https://www.turkiye.gov.tr',ac:'Resmi başvuru/belge'},
+  teknofest:{ad:'TEKNOFEST',url:'https://www.teknofest.org',ac:'Yarışma başvuru'},
+};
+function portalCoz(key,ara){
+  if(key && PORTALLAR[key]) return PORTALLAR[key];
+  if(ara) return {ad:ara,url:'https://www.google.com/search?q='+encodeURIComponent(ara+' resmi site'),ac:'Aramada aç'};
+  return null;
+}
+
 let sonAnaliz=null;
 async function evrakAnaliz(){
   const metin=document.getElementById('gelenMetin').value.trim();
@@ -765,10 +813,16 @@ async function evrakAnaliz(){
   spinDon(['Evrak okunuyor…','Konu ve talep belirleniyor…','Son tarih aranıyor…','Hazırlanacak belge çıkarılıyor…']);
 
   const parts=[];
-  const sistem='Sen Türkiye\'de bir özel okulda görevli öğretmene yardım eden resmi evrak uzmanısın. Sana bir kuruma (Milli Eğitim Bakanlığı / İl / İlçe Milli Eğitim / okul içi) ait GELEN bir evrak veriliyor (görsel, PDF ya da metin). Görevin bu evrakı çözümlemek.';
-  let istem='Aşağıdaki gelen evrakı incele ve SADECE geçerli JSON döndür (markdown, açıklama, ``` YOK). Şu alanlar olsun:\n'+
-    '{"belge_turu":"...","gonderen_makam":"...","sayi":"...","tarih":"...","konu":"...","ne_isteniyor":"tek cümle net özet","detaylar":["madde","madde"],"son_tarih":"varsa tarih yoksa boş","ilgili_kademe":"anaokulu/ilkokul/ortaokul/genel","onerilen_belgeler":[{"ad":"hazırlanması gereken belge adı","aciklama":"neden"}],"aciliyet":"düşük/orta/yüksek"}\n'+
-    'Öğretmenin branşı: yapay zeka, robotik-kodlama, satranç, akıl ve zeka oyunları (anaokulu–8. sınıf). Belge okunamıyorsa alanları boş bırak ve ne_isteniyor içine "Evrak net okunamadı" yaz.';
+  const sistem='Sen Türkiye\'de bir öğretmene/uzman öğreticiye yardım eden resmi evrak uzmanısın. Sana bir kuruma (Milli Eğitim Bakanlığı / İl / İlçe MEM / okul / özel eğitim-rehabilitasyon merkezi) ait GELEN bir evrak veriliyor (görsel, PDF ya da metin). Görevin bu evrakı çözümlemek VE kullanıcının profiline göre onu ilgilendirip ilgilendirmediğini belirlemek.';
+  let istem='Aşağıdaki gelen evrakı incele. '+kurumMetni()+'\n\n'+
+    'SADECE geçerli JSON döndür (markdown/açıklama/``` YOK). Alanlar:\n'+
+    '{"belge_turu":"...","gonderen_makam":"...","sayi":"...","tarih":"...","konu":"...","ne_isteniyor":"tek cümle net özet",'+
+    '"detaylar":["madde","madde"],"son_tarih":"varsa tarih yoksa boş","ilgili_kademe":"anaokulu/ilkokul/ortaokul/genel",'+
+    '"beni_ilgilendiriyor":"evet | kısmen | hayır","ilgili_gorev":"kullanıcının profilindeki hangi görevi ilgilendiriyor (unvan+kurum) yoksa boş","neden":"neden ilgilendiriyor/ilgilendirmiyor tek cümle",'+
+    '"benden_isteniyor":"kullanıcının bizzat yapması/hazırlaması gereken şey (yoksa boş)",'+
+    '"gerekli_portal":"şu anahtarlardan biri veya boş: dys, mebbis, eokul, eba, oba, ozel, meb, edevlet, teknofest","portal_ara":"listede yoksa portal/sistem adı yoksa boş",'+
+    '"onerilen_belgeler":[{"ad":"hazırlanması gereken belge adı","aciklama":"neden","gorev":"bu belge hangi görev adına: ilgili görevin unvanı"}],"aciliyet":"düşük/orta/yüksek"}\n'+
+    'Kurallar: Belge kullanıcının görevlerinden biriyle (okul öncesi/anaokulu, ilkokul-ortaokul yapay zekâ-robotik-kodlama-satranç-akıl oyunları, ya da rehabilitasyon/uzman öğreticilik) ilişkiliyse beni_ilgilendiriyor="evet" ver ve doğru görevi ilgili_gorev\'e yaz. Genel/idari ama dolaylı ilgilendiriyorsa "kısmen". Belge okunamıyorsa alanları boş bırak, ne_isteniyor="Evrak net okunamadı".';
   if(metin) istem+='\n\nKULLANICI NOTU/METİN:\n'+metin;
   parts.push({text:istem});
   yuklenenDosyalar.forEach(f=>{ if(f.mime.startsWith('image/')||f.mime==='application/pdf'){ parts.push({inlineData:{mimeType:f.mime,data:f.b64}}); } });
@@ -786,7 +840,25 @@ function analizGoster(d){
   const sonuc=document.getElementById('analizSonuc');
   const due=d.son_tarih?'<span class="badge due">⏰ Son tarih: '+d.son_tarih+'</span>':'';
   const ac=d.aciliyet?('<span class="badge info">Aciliyet: '+d.aciliyet+'</span>'):'';
-  let h='<div class="panel"><h3 class="pt">🔍 Çözümleme sonucu '+due+' '+ac+'</h3><div class="analiz">';
+
+  // İlgi bandı
+  const ilg=(d.beni_ilgilendiriyor||'').toLowerCase();
+  let bant='';
+  if(ilg==='evet'||ilg==='kısmen'||ilg==='kismen'){
+    const evet=(ilg==='evet');
+    bant='<div class="panel" style="background:'+(evet?'linear-gradient(135deg,#f0fdf4,#dcfce7)':'linear-gradient(135deg,#fffbeb,#fef3c7)')+';border-color:'+(evet?'#86efac':'#fde68a')+'">'+
+      '<h3 class="pt" style="color:'+(evet?'#166534':'#92400e')+'">'+(evet?'✅ Bu evrak seni ilgilendiriyor':'🟡 Bu evrak seni kısmen ilgilendiriyor')+'</h3>'+
+      (d.ilgili_gorev?('<p style="margin:2px 0"><b>İlgili görevin:</b> '+d.ilgili_gorev+'</p>'):'')+
+      (d.neden?('<p style="margin:2px 0;color:var(--txtsoft)">'+d.neden+'</p>'):'')+
+      (d.benden_isteniyor?('<div class="kutu" style="border-color:var(--seal);margin-top:8px"><b>📌 Senden isteniyor:</b> '+d.benden_isteniyor+'</div>'):'');
+    const pr=portalCoz(d.gerekli_portal,d.portal_ara);
+    if(pr) bant+='<a class="btn tl sm" href="'+pr.url+'" target="_blank" style="margin-top:10px;text-decoration:none">🔗 '+pr.ad+' →</a><div class="note">'+(pr.ac||'')+'</div>';
+    bant+='</div>';
+  }else if(ilg==='hayır'||ilg==='hayir'){
+    bant='<div class="panel" style="background:#f8fafc;border-color:#e2e8f0"><h3 class="pt" style="color:#475569">⚪ Bu evrak doğrudan seni ilgilendirmiyor</h3>'+(d.neden?'<p style="color:var(--txtsoft)">'+d.neden+'</p>':'')+'<p class="note">Yine de gerekirse aşağıdan belge hazırlayabilirsin.</p></div>';
+  }
+
+  let h=bant+'<div class="panel"><h3 class="pt">🔍 Çözümleme sonucu '+due+' '+ac+'</h3><div class="analiz">';
   const satir=(b,v)=>v?('<div class="arow"><b>'+b+'</b><span>'+v+'</span></div>'):'';
   h+=satir('Belge türü',d.belge_turu);
   h+=satir('Gönderen makam',d.gonderen_makam);
@@ -797,22 +869,32 @@ function analizGoster(d){
   h+=satir('İlgili kademe',d.ilgili_kademe);
   h+='</div>';
   if(d.onerilen_belgeler&&d.onerilen_belgeler.length){
-    h+='<h3 class="pt" style="margin-top:16px">📝 Hazırlaman gereken belgeler</h3><div class="grid">';
+    const oto=(ilg==='evet');
+    h+='<h3 class="pt" style="margin-top:16px">📝 Senin adına hazırlanacak belgeler'+(oto?' <span class="badge info">ilki otomatik hazırlanıyor</span>':'')+'</h3><div class="grid">';
     d.onerilen_belgeler.forEach((b,i)=>{
-      h+='<div class="card" onclick="oneriBelgeHazirla('+i+')"><div class="ic" style="background:var(--grad-a)">✍️</div><h3>'+b.ad+'</h3><p>'+(b.aciklama||'')+'</p><span class="arrow">→</span></div>';
+      h+='<div class="card" onclick="oneriBelgeHazirla('+i+')"><div class="ic" style="background:'+(i===0&&oto?'var(--grad-b)':'var(--grad-a)')+'">✍️</div><h3>'+b.ad+'</h3><p>'+(b.aciklama||'')+(b.gorev?('<br><i>'+b.gorev+'</i>'):'')+'</p><span class="arrow">→</span></div>';
     });
     h+='</div>';
   }
   h+='</div>';
   sonuc.innerHTML=h;
+
+  // OTOMATİK: ilgiliyse ilk belgeyi senin adına anında hazırla
+  if(ilg==='evet' && d.onerilen_belgeler && d.onerilen_belgeler.length && !d._otoYapildi){
+    d._otoYapildi=true;
+    setTimeout(()=>oneriBelgeHazirla(0),400);
+  }
 }
 function oneriBelgeHazirla(i){
   const b=sonAnaliz.onerilen_belgeler[i];
+  const gorev=b.gorev||sonAnaliz.ilgili_gorev||'';
   const baglam='GELEN EVRAK ÖZETİ:\nBelge türü: '+(sonAnaliz.belge_turu||'')+'\nGönderen: '+(sonAnaliz.gonderen_makam||'')+
     '\nKonu: '+(sonAnaliz.konu||'')+'\nİstenen: '+(sonAnaliz.ne_isteniyor||'')+
+    (sonAnaliz.benden_isteniyor?('\nBenden isteniyor: '+sonAnaliz.benden_isteniyor):'')+
+    (gorev?('\nBu belge şu görev adına: '+gorev):'')+
     (sonAnaliz.son_tarih?('\nSon tarih: '+sonAnaliz.son_tarih):'')+
     (sonAnaliz.detaylar?('\nDetaylar: '+sonAnaliz.detaylar.join('; ')):'');
-  belgeUret(b.ad, 'Gelen evraka yanıt olarak "'+b.ad+'" hazırla. '+(b.aciklama||''), baglam);
+  belgeUret(b.ad, 'Gelen evraka yanıt olarak, kullanıcının BİZZAT adına "'+b.ad+'" hazırla. '+(b.aciklama||'')+(gorev?(' Belgeyi "'+gorev+'" görevine uygun unvan ve kurumla düzenle.'):''), baglam);
 }
 
 /* ============ BELGE HAZIRLA KATALOĞU ============ */
@@ -921,12 +1003,13 @@ function belgeUret(baslik, istem, baglam){
   ovFootCiz();
   ov.classList.add('on');
 
-  const sistem='Sen Türkiye\'deki resmi eğitim yazışmalarında uzman bir asistansın. Görevin, öğretmen için ÇIKTIYA HAZIR resmi belgeler yazmak. Kurallar:\n'+
-    '- Türkçe, resmi ama akıcı dil. Resmi yazışmalarda "T.C." başlığı, tarih, sayı, konu, ilgi (varsa), gövde ve "Bilgilerinize arz ederim / gereğini rica ederim" kapanışı; altta ad-soyad, unvan, imza bölümü.\n'+
-    '- Dilekçelerde makam hitabı ve nazik dil; altta tarih, ad-soyad, imza, iletişim.\n'+
-    '- Tablolu belgelerde (liste/plan) düzgün markdown tablosu kullan (en fazla birkaç sütun). LaTeX YOK.\n'+
-    '- Bilinmeyen bilgiler için [köşeli parantez] yer tutucu bırak, uydurma.\n'+
-    '- Sadece belgeyi yaz; sohbet, önsöz, "işte belgeniz" gibi ekleme YAPMA. Doğrudan belge metniyle başla.\n'+
+  const sistem='Sen Türkiye\'deki resmi eğitim yazışmalarında uzman bir asistansın. Görevin, kullanıcının BİZZAT ADINA ÇIKTIYA HAZIR resmi belgeler yazmak. Kurallar:\n'+
+    '- Kullanıcının profilinde BİRDEN FAZLA görev olabilir (okul öncesi/anaokulu; ilkokul-ortaokul yapay zekâ-robotik-kodlama-satranç-akıl oyunları; rehabilitasyon merkezinde uzman öğreticilik). Belgenin konusuna EN UYGUN görevi seç ve o görevin UNVANI ile KURUMU üzerinden yaz; belge o kurumu ilgilendiriyorsa o kurumun adını kullan.\n'+
+    '- Türkçe, resmi ama akıcı dil. Resmi yazılarda "T.C." başlığı, tarih, sayı, konu, ilgi (varsa), gövde ve "Bilgilerinize arz ederim / gereğini rica ederim" kapanışı; altta ad-soyad, unvan, imza bölümü.\n'+
+    '- Dilekçelerde makam hitabı ve nazik dil; altta tarih, ad-soyad, unvan, imza, iletişim.\n'+
+    '- Tablolu belgelerde (liste/plan) düzgün markdown tablosu kullan. LaTeX YOK.\n'+
+    '- Bilinmeyen bilgiler için [köşeli parantez] yer tutucu bırak, ASLA uydurma.\n'+
+    '- Sadece belgeyi yaz; sohbet/önsöz ("işte belgeniz") EKLEME. Doğrudan belge metniyle başla.\n'+
     '- Başlık ve önemli yerleri **kalın**, gerektiğinde *italik* kullan.';
   const tamIstem=istem+'\n\n'+kurumMetni()+'\n\n'+(baglam||'')+'\n\nŞimdi belgeyi eksiksiz yaz.';
 
@@ -1072,12 +1155,44 @@ function ovFootCiz(){
 /* Modal kapamalar */
 function ovKapat(){document.getElementById('ov').classList.remove('on');const a=document.getElementById('askBox');if(a)a.remove();}
 function kurumAyarAc(){const k=kurumGet();
-  document.getElementById('kOkul').value=k.okul||'';document.getElementById('kIlce').value=k.ilce||'';document.getElementById('kMudur').value=k.mudur||'';document.getElementById('kAd').value=k.ad||'';document.getElementById('kUnvan').value=k.unvan||'';document.getElementById('kKurumKodu').value=k.kurumKodu||'';document.getElementById('kIletisim').value=k.iletisim||'';
+  const gd=(id,v)=>document.getElementById(id).value=v||'';
+  gd('kAd',k.ad);gd('kIl',[k.il,k.ilce].filter(Boolean).join(' / ')||k.ilce);gd('kIletisim',k.iletisim);gd('kKurumKodu',k.kurumKodu);gd('kMudur',k.mudur);
+  gorevKutuCiz(gorevler());
   document.getElementById('ovKurum').classList.add('on');}
 function kurumKapat(){document.getElementById('ovKurum').classList.remove('on');}
+function gorevKutuCiz(list){
+  const c=document.getElementById('gorevKutu');c.innerHTML='';
+  (list&&list.length?list:[{}]).forEach((g,i)=>c.appendChild(gorevSatir(g)));
+}
+function gorevSatir(g){
+  g=g||{};
+  const d=document.createElement('div');d.className='kutu gorevRow';d.style.padding='10px';
+  d.innerHTML=
+    '<div style="display:flex;gap:8px;align-items:center;margin-bottom:6px">'+
+      '<input class="gUnvan" placeholder="Unvan / branş (örn: Okul Öncesi Öğretmeni)" value="'+(g.unvan||'').replace(/"/g,'&quot;')+'" style="flex:1">'+
+      '<button class="btn gh sm" title="Sil" onclick="this.closest(\'.gorevRow\').remove()">🗑</button></div>'+
+    '<div class="row two"><input class="gKurum" placeholder="Kurum (örn: Özel Değişim Koleji)" value="'+(g.kurum||'').replace(/"/g,'&quot;')+'">'+
+      '<input class="gKademe" placeholder="Kademe (örn: Anaokulu / İlkokul-Ortaokul)" value="'+(g.kademe||'').replace(/"/g,'&quot;')+'"></div>'+
+    '<input class="gDersler" placeholder="Dersler (varsa, virgülle)" value="'+(g.dersler||'').replace(/"/g,'&quot;')+'" style="margin-top:8px">'+
+    '<label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;cursor:pointer"><input type="checkbox" class="gAsil" '+(g.asil?'checked':'')+'> Bu benim <b>asıl branşım</b></label>';
+  return d;
+}
+function gorevSatirEkle(){document.getElementById('gorevKutu').appendChild(gorevSatir({}));}
+function profilVarsayilana(){if(!confirm('Görevlerin sana göre varsayılana dönsün mü? (Ad, iletişim gibi alanlar korunur.)'))return;
+  const k=kurumGet();k.gorevler=JSON.parse(JSON.stringify(PROFIL_VARSAYILAN.gorevler));localStorage.setItem(LS.kurum,JSON.stringify(k));gorevKutuCiz(k.gorevler);toast('Görevler varsayılana döndü');}
 function kurumKaydet(){
-  const k={okul:kOkul.value.trim(),ilce:kIlce.value.trim(),mudur:kMudur.value.trim(),ad:kAd.value.trim(),unvan:kUnvan.value.trim(),kurumKodu:kKurumKodu.value.trim(),iletisim:kIletisim.value.trim()};
-  localStorage.setItem(LS.kurum,JSON.stringify(k));kurumChipCiz();kurumKapat();toast('🏫 Kurum bilgileri kaydedildi');
+  const g=(id)=>document.getElementById(id).value.trim();
+  const il=g('kIl');
+  const gorevList=[...document.querySelectorAll('#gorevKutu .gorevRow')].map(r=>({
+    unvan:r.querySelector('.gUnvan').value.trim(),
+    kurum:r.querySelector('.gKurum').value.trim(),
+    kademe:r.querySelector('.gKademe').value.trim(),
+    dersler:r.querySelector('.gDersler').value.trim(),
+    asil:r.querySelector('.gAsil').checked
+  })).filter(x=>x.unvan||x.kurum);
+  if(gorevList.length && !gorevList.some(x=>x.asil)) gorevList[0].asil=true;
+  const k={ad:g('kAd'),iletisim:g('kIletisim'),il:il,ilce:il,mudur:g('kMudur'),kurumKodu:g('kKurumKodu'),gorevler:gorevList};
+  localStorage.setItem(LS.kurum,JSON.stringify(k));kurumChipCiz();kurumKapat();toast('💾 Profil kaydedildi');
 }
 
 /* ============ AYARLAR ============ */
@@ -1129,11 +1244,11 @@ function konumSifirla(){ZIRVE_kontroller.forEach(k=>localStorage.removeItem('fab
 
 /* ============ KARŞILAMA ============ */
 const HOS={baslik:'Resmi Evrak & Yarışma Asistanı',
-  ozet:'Milli Eğitim\'den gelen evrakı çözer, istenen belgeyi resmi kurallara uygun hazırlar. Anaokulundan 8. sınıfa; yapay zekâ, robotik, kodlama, satranç ve akıl-zekâ oyunları için tasarlandı.',
+  ozet:'Gelen resmi evrakı okur, SENİ ilgilendiriyorsa senden ne isteniyorsa belgeyi otomatik senin adına hazırlar ve gerekiyorsa doğru portala (MEBBİS/DYS/e-Okul/EBA…) yönlendirir. Çok görevli profiline göre (okul öncesi + ilkokul/ortaokul YZ-robotik-kodlama-satranç-akıl oyunları + rehabilitasyonda uzman öğreticilik) ayarlıdır.',
   adimlar:[
     'Önce ⚙️ Ayarlar\'dan ücretsiz Gemini API anahtarını gir (aistudio.google.com/apikey).',
-    '🏫 üst köşeden kurum bilgilerini bir kez gir — her belgeye otomatik işlenir.',
-    '📥 Gelen Evrak: MEB yazısını (PDF/foto/metin) yükle → "Çözümle" → önerilen belgeyi tek tıkla hazırla.',
+    '👤 üst köşeden profilini kontrol et — görevlerin sana göre önceden dolu gelir, adını ve iletişimini ekle.',
+    '📥 Gelen Evrak: MEB yazısını (PDF/foto/metin) yükle → "Çözümle". Seni ilgilendiriyorsa ilk belge otomatik senin adına hazırlanır; gerekirse portal linki çıkar.',
     '📝 Belge Hazırla & 🏆 Yarışmalar: hazır şablonlardan seç, kısa formu doldur, belgeyi al.',
     'Her belgeyi 📷 Görsel / 📄 PDF / 🖨️ Yazdır ile çıktı al; hepsi 🗄️ Arşiv\'de saklanır.'
   ]};
@@ -1151,9 +1266,9 @@ function hosKapat(){document.getElementById('ovHos').classList.remove('on');}
 
 /* ============ ASİSTAN ============ */
 function durumOzeti(){
-  const k=kurumGet();const a=arsivGet();
-  return 'Kurum: '+(k.okul||'girilmemiş')+' ('+(k.ilce||'-')+'). Öğretmen branşı: yapay zeka/robotik/kodlama/satranç/akıl-zeka oyunları, anaokulu–8. sınıf. '+
-    'Arşivdeki belge sayısı: '+a.length+'. '+(sonAnaliz?('Son çözümlenen evrak konusu: '+(sonAnaliz.konu||'-')+', istenen: '+(sonAnaliz.ne_isteniyor||'-')+'.'):'Henüz evrak çözümlenmedi.');
+  const a=arsivGet();
+  return kurumMetni()+'\nArşivdeki belge sayısı: '+a.length+'. '+
+    (sonAnaliz?('Son çözümlenen evrak konusu: '+(sonAnaliz.konu||'-')+', istenen: '+(sonAnaliz.ne_isteniyor||'-')+', beni ilgilendiriyor: '+(sonAnaliz.beni_ilgilendiriyor||'-')+'.'):'Henüz evrak çözümlenmedi.');
 }
 function asAc(){
   document.getElementById('asBody').innerHTML=
@@ -1214,7 +1329,7 @@ function warnBand(){
 
 /* ============ BAŞLAT ============ */
 function init(){
-  ringLoad(); kurumChipCiz(); katalogCiz(); yarismaCiz(); arsivCiz();
+  ringLoad(); kurumSeed(); kurumChipCiz(); katalogCiz(); yarismaCiz(); arsivCiz();
   ekranModu();
   // Yüzen düğmeler
   kontrolKur({id:'ekran',ikon:'📺 Oto',cls:'pill',onTap:ekranDondur,gizliBayrak:'zirve_ekran_pill_gizli',dx:12,dy:150});
