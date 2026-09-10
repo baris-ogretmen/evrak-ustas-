@@ -245,6 +245,15 @@
   #ov .modal{max-width:1040px}
   .belgeGrid{display:flex;gap:14px;align-items:flex-start}
   .belgeSol{flex:1;min-width:0}
+  .yonerge{background:linear-gradient(135deg,#eef6ff,#e8fff4);border:1px solid #bfe6d4;border-left:5px solid var(--teal);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+  .yonerge h4{margin:0 0 8px;color:var(--ink);font-size:15px;display:flex;align-items:center;gap:7px}
+  .yonerge .yr{font-size:13px;margin:4px 0;color:var(--txtsoft)}
+  .yonerge .yr b{color:var(--seal)}
+  .yonerge ol{margin:8px 0 4px;padding-left:20px}
+  .yonerge ol li{font-size:13.5px;margin:5px 0;color:var(--txt)}
+  .yonerge .yaz{background:#fff;border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12px;color:var(--muted);margin-top:8px}
+  .yonerge .yl{display:inline-block;margin-top:8px;background:var(--grad-b);color:#fff;padding:7px 12px;border-radius:9px;font-size:13px;font-weight:700;text-decoration:none}
+  .yonerge .due2{background:#fef2f2;color:var(--err);border:1px solid #fecaca;padding:2px 8px;border-radius:20px;font-weight:800;font-size:12px}
   .belgeSag{flex:0 0 350px;background:var(--paper2);border:1px solid var(--line);border-radius:12px;padding:14px;align-self:stretch}
   .belgeSag h3.pt{font-size:15px;margin:0 0 10px}
   .belgeSekme{display:none;gap:6px;margin-bottom:12px}
@@ -590,11 +599,26 @@ function temizleLatex(s){
 }
 
 /* WhatsApp biçimi */
+function tabloDuzlestir(t){
+  // markdown tablosunu okunur satırlara çevir: | Sıra | Ad | Görev | -> "1. Ad — Görev"
+  return t.replace(/((?:^[ \t]*\|.*\|[ \t]*\n?)+)/gm,block=>{
+    const rows=block.trim().split('\n').filter(r=>r.trim().startsWith('|'));
+    if(rows.length<2) return block;
+    const huc=r=>r.replace(/^\s*\||\|\s*$/g,'').split('|').map(c=>c.trim());
+    const out=[]; let bas=false;
+    for(let i=0;i<rows.length;i++){
+      const c=huc(rows[i]);
+      if(c.every(x=>/^:?-{2,}:?$/.test(x)||x==='')) {bas=true; continue;}
+      if(!bas && i===0){ continue; } // başlık satırını atla
+      out.push(c.filter(x=>x!=='').join(' — '));
+    }
+    return out.join('\n');
+  });
+}
 function whatsappMetin(md){
-  let t = ZIRVE.duzMetin(md); // önce HTML soy
-  // markdown zaten büyük ölçüde temizlendi; kalın vurgu için basit dönüş
-  t = String(md).replace(/<[^>]+>/g,'');
+  let t = String(md).replace(/<[^>]+>/g,'');
   t = t.replace(/&nbsp;/g,' ').replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>');
+  t = tabloDuzlestir(t);
   t = t.replace(/\*\*\*(.+?)\*\*\*/g,'*$1*').replace(/\*\*(.+?)\*\*/g,'*$1*')
        .replace(/^#{1,6}\s*(.+)$/gm,'*$1*').replace(/^\s*[-*]\s+/gm,'• ')
        .replace(/\[(.+?)\]\((.+?)\)/g,'$1 ($2)');
@@ -736,7 +760,7 @@ function ekranDondur(){
    ============================================================ */
 function toast(m){const t=document.getElementById('toast');const e=document.createElement('div');e.className='toast';e.textContent=m;t.appendChild(e);setTimeout(()=>e.remove(),2600);}
 const PROFIL_VARSAYILAN={
-  ad:'', iletisim:'', il:'', ilce:'', mudur:'', kurumKodu:'',
+  ad:'', iletisim:'', il:'', ilce:'', mudur:'Mehmet Emin Ateş', kurumKodu:'',
   gorevler:[
     {unvan:'Okul Öncesi Öğretmeni', kurum:'Özel Değişim Koleji', kademe:'Anaokulu', dersler:'Okul öncesi eğitim', asil:true},
     {unvan:'Bilişim / Yapay Zekâ - Robotik - Kodlama - Satranç - Akıl ve Zekâ Oyunları Öğretmeni', kurum:'Özel Değişim Koleji', kademe:'İlkokul ve Ortaokul', dersler:'Yapay zekâ, robotik, kodlama, satranç, akıl ve zekâ oyunları', asil:false},
@@ -1055,6 +1079,36 @@ const BELGE_SISTEM='Sen Türkiye\'deki resmi eğitim yazışmalarında uzman bir
   '- Sadece belgeyi yaz; sohbet/önsöz ("işte belgeniz") EKLEME. Doğrudan belge metniyle başla.\n'+
   '- Başlık ve önemli yerleri **kalın**, gerektiğinde *italik* kullan.';
 
+function yonergeKutusuCiz(){
+  const kutu=document.getElementById('yonergeKutu'); if(!kutu) return;
+  const d=sonAnaliz;
+  const taraf=aktifMeta.gonderenTaraf||(d&&d.gonderen_taraf)||'belirsiz';
+  const makam=aktifMeta.gonderilecekMakam||(d&&d.gonderilecek_makam)||'';
+  const k=kurumGet();
+  const ad=(k.ad||'').split(' ')[0]||'';
+  if(!d && !aktifMeta.gonderenTaraf){ kutu.innerHTML=''; return; }
+  let h='<div class="yonerge"><h4>🧭 '+(ad?ad+', ':'')+'bu belgeyle ne yapacaksın?</h4>';
+  if(d&&d.ilgili_gorev) h+='<div class="yr"><b>İlgili görevin:</b> '+d.ilgili_gorev+'</div>';
+  if(d&&d.benden_isteniyor) h+='<div class="yr"><b>İstenen:</b> '+d.benden_isteniyor+'</div>';
+  if(d&&d.son_tarih) h+='<div class="yr"><span class="due2">⏰ Son tarih: '+d.son_tarih+'</span></div>';
+  h+='<ol>';
+  h+='<li><b>Kişileri gir.</b> Aşağıdaki <i>"Değişiklik iste"</i> kutusuna konuşarak/yazarak söyle — örn: <i>"okul müdürü '+(k.mudur||'Mehmet Emin Ateş')+', üyeler Ahmet Yılmaz, Derya Bekiroğlu, Ebru..."</i> — boş yerleri otomatik doldururum. Ya da sağdaki <b>✏️ Belge alanları</b>ndan tek tek ekle.</li>';
+  h+='<li><b>Kontrol et.</b> Taslak dolunca <b>👁️ Ön izle</b> ile resmi (sade, siyah) halini gör.</li>';
+  if(taraf==='okul'){
+    h+='<li><b>Müdüre ilet.</b> Bu belge <u>okul müdürlüğü</u> tarafından oluşturulur. Taslağı müdürün '+(k.mudur?('('+k.mudur+') '):'')+'onayına gönder; müdür onaylayınca sistem tanımını okul yapar.</li>';
+    if(d&&/yazak|yazzek/i.test((d.konu||'')+(d.benden_isteniyor||''))) h+='<li><b>Sisteme işle.</b> Ekip, ilgili sistem (YAZAK/YAZZEK) üzerinden en az 4 üyeyle tanımlanır. Aşağıdaki linkten sisteme gir.</li>';
+  }else if(taraf==='ben'){
+    h+='<li><b>Sen gönder.</b> '+(makam?('Belgeyi <b>'+makam+'</b>\'a '):'')+'👁️ Ön izle & Gönder ekranından e-posta/WhatsApp ile ilet.</li>';
+  }else{
+    h+='<li><b>Gönderim yolu.</b> Bu belgeyi kimin göndereceği net değilse müdürünle netleştir; genelde resmi yazıyı okul müdürlüğü gönderir. Ön izle ekranından ikisini de yapabilirsin.</li>';
+  }
+  h+='</ol>';
+  const pr=portalCoz(d&&d.gerekli_portal, d&&d.portal_ara);
+  if(pr) h+='<a class="yl" href="'+pr.url+'" target="_blank">🔗 '+pr.ad+' →</a>';
+  h+='<div class="yaz">💡 İpucu: Gönderilecek belge her zaman sade ve resmîdir (siyah). Bu renkli kutu yalnızca sana yol göstermek için; belgeye/çıktıya dahil olmaz.</div>';
+  h+='</div>';
+  kutu.innerHTML=h;
+}
 function belgeUret(baslik, istem, baglam, meta){
   aiBaslik=baslik; aiConv=[]; aiSonMetin='';
   aktifIstem=istem; aktifBaglam=baglam||''; aktifKisiler=[]; aktifMeta=meta||{};
@@ -1068,11 +1122,12 @@ function belgeUret(baslik, istem, baglam, meta){
       '<button class="act" onclick="belgeSekmeGec(\'sol\')">📄 Taslak</button>'+
       '<button onclick="belgeSekmeGec(\'sag\')">✏️ Belge alanları</button></div>'+
     '<div class="belgeGrid solAktif" id="belgeGrid">'+
-      '<div class="belgeSol"><div class="conv" id="convBox"></div></div>'+
+      '<div class="belgeSol"><div id="yonergeKutu"></div><div class="conv" id="convBox"></div></div>'+
       '<div class="belgeSag" id="belgeSag"></div>'+
     '</div>';
   ovFootCiz();
   belgeFormPaneliCiz();
+  yonergeKutusuCiz();
   document.getElementById('ov').classList.add('on');
   taslakUret(false);
 }
@@ -1203,7 +1258,7 @@ function elleVazgec(btn){
 function askKutuEkle(box){
   if(document.getElementById('askBox'))return;
   const w=document.createElement('div');w.className='askbox';w.id='askBox';
-  w.innerHTML='<input id="askIn" placeholder="Değişiklik iste: \'tarihi düzelt\', \'daha kısa\', \'şu kısmı ekle\'..."><button class="clr" id="askClr">×</button><button class="btn tl sm" onclick="aiTakip()">Gönder</button>';
+  w.innerHTML='<input id="askIn" placeholder="Kişileri yaz / değişiklik iste: \'müdür Mehmet Emin Ateş, üyeler Ahmet, Derya...\'"><button class="clr" id="askClr">×</button><button class="btn tl sm" onclick="aiTakip()">Gönder</button>';
   box.parentElement.appendChild(w);
   const inp=document.getElementById('askIn'),clr=document.getElementById('askClr');
   inp.addEventListener('input',()=>clr.style.display=inp.value?'block':'none');
@@ -1223,7 +1278,9 @@ function aiTakip(){
   // eski "güncel" etiketini normale çevir
   box.querySelectorAll('.bub.ai .vtag.cur').forEach((v,i,arr)=>{if(v!==bub.querySelector('.vtag'))v.classList.remove('cur');});
 
-  const sistem='Kullanıcı önceki resmi belgede DEĞİŞİKLİK istiyor. Hiç sohbet/önsöz ("Tabii","işte güncellenmiş hali") EKLEME. Önceki belgeyi AYNEN koru, YALNIZCA istenen değişikliği uygula ve GÜNCELLENMİŞ TAM BELGEYİ döndür. Renk isteğinde <span style="color:İSTENEN;font-weight:700">...</span> kullan. LaTeX YOK.';
+  const sistem='Kullanıcı önceki resmi belgede DEĞİŞİKLİK istiyor ya da belgedeki boşlukları dolduracak bilgi (kişi adları, tarih, sayı vb.) veriyor. Hiç sohbet/önsöz ("Tabii","işte güncellenmiş hali") EKLEME. Önceki belgeyi AYNEN koru, YALNIZCA istenen değişikliği/doldurmayı uygula ve GÜNCELLENMİŞ TAM BELGEYİ döndür.\n'+
+    'ÖNEMLİ - kişi/isim doldurma: Kullanıcı isimler verirse (örn. "okul müdürü Mehmet Emin Ateş, üyeler Ahmet, Derya, Ebru"), bu isimleri belgedeki [Ad Soyad], [İmza], [Kullanıcının Adı Soyadı], [Okul Müdürü] gibi İLGİLİ yer tutucularına yerleştir. Verilen unvanı doğru satıra koy (müdür → Ekip Başkanı satırı vb.). Üye sayısı verilen kişi sayısına göre olsun; fazla boş satır varsa çıkar, eksikse [Ad Soyad] ile bırakma, verilenleri kullan. Kullanıcının kendi adını "Hazırlayan" kısmına da yaz. Tarih/sayı verilirse ilgili yerlere işle. Verilmeyen alanları [köşeli parantez] olarak bırak, UYDURMA.\n'+
+    'Renk isteğinde <span style="color:İSTENEN;font-weight:700">...</span> kullan. Kişi listeleri düzgün markdown tablosu olsun. LaTeX YOK.';
   const istem='ÖNCEKİ BELGE:\n'+aiSonMetin+'\n\nİSTENEN DEĞİŞİKLİK: '+q+'\n\nGüncellenmiş tam belgeyi ver.';
   generateContent([{text:istem}],{system:sistem,onChunk:t=>{aiSonMetin=t;bub.innerHTML='<div class="vtag cur">✅ Güncel Versiyon</div><div class="prose">'+render(t)+'</div>';box.scrollTop=box.scrollHeight;}})
     .then(t=>{spinDur();aiSonMetin=t;aiConv.push({role:'ai',text:t});bubToolsEkle(bub,t,box);arsivKaydet(aiBaslik,t);})
@@ -1325,7 +1382,7 @@ function gonderMail(mudure){
   window.location.href=url; toast('📧 E-posta uygulaman açılıyor');
 }
 function gonderWhatsapp(mudure){
-  const txt=encodeURIComponent((mudure?'Müdürüm, aşağıdaki belgeyi onayınıza sunuyorum:\n\n':'')+gonderMetinGovde());
+  const txt=encodeURIComponent((mudure?'Sayın Müdürüm, aşağıdaki belgeyi onayınıza sunuyorum:\n\n':'')+whatsappMetin(aiSonMetin));
   window.open('https://wa.me/?text='+txt,'_blank'); toast('🟢 WhatsApp açılıyor');
 }
 
