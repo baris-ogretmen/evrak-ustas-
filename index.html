@@ -849,7 +849,7 @@ async function evrakAnaliz(){
     '"gerekli_portal":"şu anahtarlardan biri veya boş: dys, mebbis, eokul, eba, oba, ozel, meb, edevlet, teknofest","portal_ara":"listede yoksa portal/sistem adı yoksa boş",'+
     '"onerilen_belgeler":[{"ad":"hazırlanması gereken belge adı","aciklama":"neden","gorev":"bu belge hangi görev adına: ilgili görevin unvanı","gonderilecek_makam":"bu belge KİME gönderilecek (tam makam adı, örn: ... İlçe Millî Eğitim Müdürlüğü / okul müdürlüğü)","gonderen_taraf":"ben | okul | belirsiz"}],'+
     '"gonderilecek_makam":"genel olarak yanıtın gideceği makam","gonderen_taraf":"ben | okul | belirsiz (belgeyi kullanıcı bizzat mı yoksa okul müdürlüğü üzerinden mi gönderir)","aciliyet":"düşük/orta/yüksek"}\n'+
-    'Kurallar: Belge kullanıcının görevlerinden biriyle (okul öncesi/anaokulu, ilkokul-ortaokul yapay zekâ-robotik-kodlama-satranç-akıl oyunları, ya da rehabilitasyon/uzman öğreticilik) ilişkiliyse beni_ilgilendiriyor="evet" ver ve doğru görevi ilgili_gorev\'e yaz. Genel/idari ama dolaylı ilgilendiriyorsa "kısmen". Her önerilen belge için gonderilecek_makam ve gonderen_taraf mutlaka belirt (kullanıcı bireysel dilekçe/başvuru veriyorsa "ben"; resmi üst yazı okul müdürlüğü imzasıyla gidiyorsa "okul"). E-posta adresi UYDURMA. Belge okunamıyorsa alanları boş bırak, ne_isteniyor="Evrak net okunamadı".';
+    'Kurallar: Belge kullanıcının görevlerinden biriyle (okul öncesi/anaokulu, ilkokul-ortaokul yapay zekâ-robotik-kodlama-satranç-akıl oyunları, ya da rehabilitasyon/uzman öğreticilik) ilişkiliyse beni_ilgilendiriyor="evet" ver ve doğru görevi ilgili_gorev\'e yaz. Genel/idari ama dolaylı ilgilendiriyorsa "kısmen". ÇOK ÖNEMLİ: beni_ilgilendiriyor "evet" veya "kısmen" ise onerilen_belgeler BOŞ BIRAKILAMAZ; kullanıcının HAZIRLAYIP GÖNDEREBİLECEĞİ en az 1 (en çok 3) SOMUT belge üret. Evrakta bir ekip/kurul/komisyon kurulması, üye tanımlanması veya kişi listesi isteniyorsa "Okul ... Ekibi/Kurulu Oluşturma ve Görevlendirme Onayı (üye listesiyle)" belgesini öner ve gonderen_taraf="okul" ver (kurulu okul müdürlüğü oluşturur, üyeleri kullanıcı girer). Her önerilen belge için gonderilecek_makam ve gonderen_taraf mutlaka belirt. E-posta adresi UYDURMA. Belge okunamıyorsa alanları boş bırak, ne_isteniyor="Evrak net okunamadı".';
   if(metin) istem+='\n\nKULLANICI NOTU/METİN:\n'+metin;
   parts.push({text:istem});
   yuklenenDosyalar.forEach(f=>{ if(f.mime.startsWith('image/')||f.mime==='application/pdf'){ parts.push({inlineData:{mimeType:f.mime,data:f.b64}}); } });
@@ -858,10 +858,31 @@ async function evrakAnaliz(){
     let raw=await generateContent(parts,{system:sistem});
     raw=raw.replace(/```json|```/g,'').trim();
     const m=raw.match(/\{[\s\S]*\}/); const data=JSON.parse(m?m[0]:raw);
+    belgeFallback(data);
     sonAnaliz=data; analizGoster(data);
   }catch(e){
     sonuc.innerHTML='<div class="panel"><p style="color:var(--err)">⚠️ '+(e.kullanici||'Çözümlenemedi. Anahtarı ve interneti kontrol et.')+'</p></div>';
   }finally{ spinDur(); }
+}
+function belgeFallback(d){
+  const ilg=(d.beni_ilgilendiriyor||'').toLowerCase();
+  const ilgili=(ilg==='evet'||ilg==='kısmen'||ilg==='kismen');
+  if(!ilgili) return;
+  if(!Array.isArray(d.onerilen_belgeler)) d.onerilen_belgeler=[];
+  if(d.onerilen_belgeler.length) return;
+  const havuz=((d.konu||'')+' '+(d.ne_isteniyor||'')+' '+(d.benden_isteniyor||'')).toLowerCase();
+  let ad, taraf=d.gonderen_taraf||'belirsiz';
+  if(/(ekip|kurul|komisyon|üye|uye|liste)/.test(havuz)){
+    ad=(d.konu?d.konu.split('(')[0].trim()+' — ':'')+'Ekip/Kurul Oluşturma ve Görevlendirme Onayı';
+    taraf='okul';
+  }else if(/(dilekçe|başvur|talep|izin|muvafak)/.test(havuz)){
+    ad=(d.konu?d.konu+' — ':'')+'Dilekçe';
+    taraf= taraf==='belirsiz'?'ben':taraf;
+  }else{
+    ad=(d.konu?d.konu+' — ':'')+'Resmi Yazı';
+  }
+  d.onerilen_belgeler=[{ad:ad, aciklama:d.benden_isteniyor||d.ne_isteniyor||'Gelen evrakın gereği.',
+    gorev:d.ilgili_gorev||'', gonderilecek_makam:d.gonderilecek_makam||d.gonderen_makam||'', gonderen_taraf:taraf}];
 }
 function analizGoster(d){
   const sonuc=document.getElementById('analizSonuc');
@@ -896,8 +917,8 @@ function analizGoster(d){
   h+=satir('İlgili kademe',d.ilgili_kademe);
   h+='</div>';
   if(d.onerilen_belgeler&&d.onerilen_belgeler.length){
-    const oto=(ilg==='evet');
-    h+='<h3 class="pt" style="margin-top:16px">📝 Senin adına hazırlanacak belgeler'+(oto?' <span class="badge info">ilki otomatik hazırlanıyor</span>':'')+'</h3><div class="grid">';
+    const oto=(ilg==='evet'||ilg==='kısmen'||ilg==='kismen');
+    h+='<h3 class="pt" style="margin-top:16px">📝 Senin adına hazırlanan belge'+(d.onerilen_belgeler.length>1?'ler':'')+(oto?' <span class="badge info">ilki otomatik açılıyor</span>':'')+'</h3><div class="grid">';
     d.onerilen_belgeler.forEach((b,i)=>{
       h+='<div class="card" onclick="oneriBelgeHazirla('+i+')"><div class="ic" style="background:'+(i===0&&oto?'var(--grad-b)':'var(--grad-a)')+'">✍️</div><h3>'+b.ad+'</h3><p>'+(b.aciklama||'')+(b.gorev?('<br><i>'+b.gorev+'</i>'):'')+'</p><span class="arrow">→</span></div>';
     });
@@ -906,8 +927,9 @@ function analizGoster(d){
   h+='</div>';
   sonuc.innerHTML=h;
 
-  // OTOMATİK: ilgiliyse ilk belgeyi senin adına anında hazırla
-  if(ilg==='evet' && d.onerilen_belgeler && d.onerilen_belgeler.length && !d._otoYapildi){
+  // OTOMATİK: ilgiliyse (evet/kısmen) ilk belgeyi senin adına anında hazırla
+  const ilgili=(ilg==='evet'||ilg==='kısmen'||ilg==='kismen');
+  if(ilgili && d.onerilen_belgeler && d.onerilen_belgeler.length && !d._otoYapildi){
     d._otoYapildi=true;
     setTimeout(()=>oneriBelgeHazirla(0),400);
   }
