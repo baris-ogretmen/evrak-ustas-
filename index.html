@@ -271,6 +271,14 @@
   .kisiBlok input:last-child{margin-bottom:0}
   .kisiBlok .silK{position:absolute;top:8px;right:8px;border:none;background:#fee2e2;color:#dc2626;border-radius:7px;width:24px;height:24px;cursor:pointer;font-size:14px;z-index:2}
   .kisiBlok .kno{font-size:11px;font-weight:800;color:var(--seal);margin-bottom:5px}
+  .belgeAlt{display:none;padding:10px 14px;border-top:1px solid var(--line);background:var(--paper2);flex:0 0 auto}
+  .belgeAlt.on{display:block}
+  .gerekenler{display:none;margin-bottom:8px}
+  .gerekenler .gbaslik{font-size:12px;font-weight:800;color:var(--seal);margin-bottom:6px}
+  .gerekenler .gsatir{font-size:12px;margin:3px 0;display:flex;flex-wrap:wrap;gap:5px;align-items:center}
+  .gerekenler .gsatir b{color:var(--ink);margin-right:2px}
+  .gchip{display:inline-block;background:#fff;border:1px solid var(--brass);color:var(--txt);border-radius:20px;padding:3px 9px;font-size:11.5px;font-weight:600}
+  .gchip.alt{border-color:#cbd5e1;color:var(--muted)}
   @media print{ .fab,nav.tabs,header.top,.warnband,#fabgrup,.overlay{display:none!important} body{background:#fff;padding:0} html{zoom:1!important} }
 </style>
 </head>
@@ -357,6 +365,7 @@
     <button id="ovClear" title="Temizle" onclick="aiTemizle()" style="display:none">🗑</button>
     <button onclick="ovKapat()">×</button></div>
   <div class="mbody" id="ovBody"></div>
+  <div class="belgeAlt" id="belgeAlt"></div>
   <div class="mfoot" id="ovFoot" style="display:none"></div>
 </div></div>
 
@@ -829,9 +838,10 @@ function chipCiz(){
   const c=document.getElementById('fileChips');c.innerHTML='';
   yuklenenDosyalar.forEach((f,i)=>{
     const d=document.createElement('div');d.className='fchip';
-    d.innerHTML=(f.thumb?'<img class="thumb" src="'+f.thumb+'">':'📄')+' <span>'+f.name+'</span> <button onclick="dosyaSil('+i+')">×</button>';
+    d.innerHTML=(f.thumb?'<img class="thumb" src="'+f.thumb+'">':'📄')+' <span style="color:#166534;font-weight:700">✅</span> <span>'+f.name+'</span> <button onclick="dosyaSil('+i+')">×</button>';
     c.appendChild(d);
   });
+  if(yuklenenDosyalar.length) toast('✅ '+yuklenenDosyalar.length+' evrak yüklendi');
 }
 function dosyaSil(i){yuklenenDosyalar.splice(i,1);chipCiz();}
 function gelenTemizle(){yuklenenDosyalar=[];chipCiz();document.getElementById('gelenMetin').value='';document.getElementById('analizSonuc').innerHTML='';}
@@ -1250,20 +1260,55 @@ function elleDuzenle(btn){
 function elleKaydet(btn){
   const wrap=btn.closest('.bub.ai');const ta=wrap.querySelector('.elleTA');const pr=wrap.querySelector('.prose');
   aiSonMetin=ta.value; pr.innerHTML=render(aiSonMetin); pr.style.display='';
-  ta.remove(); btn.closest('.btnrow').remove(); arsivKaydet(aiBaslik,aiSonMetin); toast('💾 Elle değişiklik kaydedildi');
+  ta.remove(); btn.closest('.btnrow').remove(); arsivKaydet(aiBaslik,aiSonMetin); gerekenlerCiz(); toast('💾 Elle değişiklik kaydedildi');
 }
 function elleVazgec(btn){
   const wrap=btn.closest('.bub.ai');wrap.querySelector('.elleTA').remove();wrap.querySelector('.prose').style.display='';btn.closest('.btnrow').remove();
 }
-function askKutuEkle(box){
-  if(document.getElementById('askBox'))return;
-  const w=document.createElement('div');w.className='askbox';w.id='askBox';
-  w.innerHTML='<input id="askIn" placeholder="Kişileri yaz / değişiklik iste: \'müdür Mehmet Emin Ateş, üyeler Ahmet, Derya...\'"><button class="clr" id="askClr">×</button><button class="btn tl sm" onclick="aiTakip()">Gönder</button>';
-  box.parentElement.appendChild(w);
-  const inp=document.getElementById('askIn'),clr=document.getElementById('askClr');
+function rolleriBul(metin){
+  const roller=[]; const yer=new Set();
+  metin=String(metin||'');
+  (metin.match(/\[[^\]\n]{2,45}\]/g)||[]).forEach(m=>{
+    const t=m.replace(/^\[|\]$/g,'').trim();
+    if(/ad soyad|adı soyadı|imza|kullanıcı/i.test(t)) return;
+    yer.add(t);
+  });
+  const satirlar=metin.split('\n').filter(r=>r.trim().startsWith('|'));
+  if(satirlar.length>=2){
+    const huc=r=>r.replace(/^\s*\||\|\s*$/g,'').split('|').map(c=>c.trim());
+    const bas=huc(satirlar[0]).map(x=>x.toLowerCase());
+    let gi=bas.findIndex(x=>/görev|unvan/.test(x)); if(gi<0) gi=2;
+    let ri=bas.findIndex(x=>/rol|açıklama/.test(x));
+    satirlar.forEach((r,i)=>{
+      if(i===0) return;
+      const c=huc(r);
+      if(c.every(x=>/^:?-{2,}:?$/.test(x)||x==='')) return;
+      const gorev=(c[gi]||'').replace(/\[|\]/g,'').trim();
+      const rol=ri>=0?(c[ri]||'').replace(/\[|\]/g,'').trim():'';
+      if(gorev && !/görev|unvan/i.test(gorev)) roller.push(gorev+(rol?(' — '+rol):''));
+    });
+  }
+  return {roller:[...new Set(roller)].slice(0,10), yer:[...yer].slice(0,8)};
+}
+function gerekenlerCiz(){
+  const el=document.getElementById('gerekenler'); if(!el) return;
+  const {roller,yer}=rolleriBul(aiSonMetin);
+  if(!roller.length && !yer.length){ el.style.display='none'; el.innerHTML=''; return; }
+  let h='<div class="gbaslik">📝 Bu belgede senden istenenler — aşağıya mikrofonla/yazarak söyle, otomatik doldururum:</div>';
+  if(roller.length) h+='<div class="gsatir"><b>Kişiler:</b> '+roller.map((r,i)=>'<span class="gchip">'+(i+1)+'. '+r+'</span>').join(' ')+'</div>';
+  if(yer.length) h+='<div class="gsatir"><b>Diğer alanlar:</b> '+yer.map(y=>'<span class="gchip alt">'+y+'</span>').join(' ')+'</div>';
+  el.innerHTML=h; el.style.display='block';
+}
+function askKutuEkle(){
+  const alt=document.getElementById('belgeAlt'); if(!alt) return;
+  alt.classList.add('on');
+  alt.innerHTML='<div id="gerekenler" class="gerekenler"></div>'+
+    '<div class="askbox" id="askBox"><input id="askIn" placeholder="Kişileri söyle: \'müdür Mehmet Emin Ateş, müdür yrd. Ayşe, üyeler Ahmet, Derya...\'"><button class="clr" id="askClr">×</button><button class="btn tl sm" onclick="aiTakip()">Gönder</button></div>';
+  const inp=alt.querySelector('#askIn'),clr=alt.querySelector('#askClr');
   inp.addEventListener('input',()=>clr.style.display=inp.value?'block':'none');
   clr.onclick=()=>{inp.value='';clr.style.display='none';};
   inp.addEventListener('keydown',e=>{if(e.key==='Enter')aiTakip();});
+  gerekenlerCiz();
 }
 function aiTakip(){
   const inp=document.getElementById('askIn');const q=inp.value.trim();if(!q)return;
@@ -1283,10 +1328,10 @@ function aiTakip(){
     'Renk isteğinde <span style="color:İSTENEN;font-weight:700">...</span> kullan. Kişi listeleri düzgün markdown tablosu olsun. LaTeX YOK.';
   const istem='ÖNCEKİ BELGE:\n'+aiSonMetin+'\n\nİSTENEN DEĞİŞİKLİK: '+q+'\n\nGüncellenmiş tam belgeyi ver.';
   generateContent([{text:istem}],{system:sistem,onChunk:t=>{aiSonMetin=t;bub.innerHTML='<div class="vtag cur">✅ Güncel Versiyon</div><div class="prose">'+render(t)+'</div>';box.scrollTop=box.scrollHeight;}})
-    .then(t=>{spinDur();aiSonMetin=t;aiConv.push({role:'ai',text:t});bubToolsEkle(bub,t,box);arsivKaydet(aiBaslik,t);})
+    .then(t=>{spinDur();aiSonMetin=t;aiConv.push({role:'ai',text:t});bubToolsEkle(bub,t,box);arsivKaydet(aiBaslik,t);gerekenlerCiz();})
     .catch(e=>{spinDur();bub.innerHTML='<div class="prose" style="color:var(--err)">⚠️ '+(e.kullanici||'Olmadı.')+'</div>';});
 }
-function aiTemizle(){aiConv=[];aiSonMetin='';document.getElementById('ovBody').innerHTML='<p class="empty">Konuşma temizlendi.</p>';const a=document.getElementById('askBox');if(a)a.remove();ovKapat();}
+function aiTemizle(){aiConv=[];aiSonMetin='';document.getElementById('ovBody').innerHTML='<p class="empty">Konuşma temizlendi.</p>';const alt=document.getElementById('belgeAlt');if(alt){alt.classList.remove('on');alt.innerHTML='';}ovKapat();}
 
 function render(t){ return marked(temizleLatex(t)); }
 /* mini markdown (bağımsız, CDN'siz) */
@@ -1431,7 +1476,7 @@ function ovFootCiz(){
 }
 
 /* Modal kapamalar */
-function ovKapat(){document.getElementById('ov').classList.remove('on');const a=document.getElementById('askBox');if(a)a.remove();}
+function ovKapat(){document.getElementById('ov').classList.remove('on');const alt=document.getElementById('belgeAlt');if(alt){alt.classList.remove('on');alt.innerHTML='';}}
 function kurumAyarAc(){const k=kurumGet();
   const gd=(id,v)=>document.getElementById(id).value=v||'';
   gd('kAd',k.ad);gd('kIl',[k.il,k.ilce].filter(Boolean).join(' / ')||k.ilce);gd('kIletisim',k.iletisim);gd('kKurumKodu',k.kurumKodu);gd('kMudur',k.mudur);
