@@ -463,36 +463,54 @@ function keysSave(txt){
   localStorage.setItem(LS.keys, arr.join('\n')); RING.keys=arr; RING.i=0; return arr;
 }
 
-/* 2) Canlı model keşfi (kendi kendine onaran) ------------------- */
-const EMEKLI = /^gemini-1\.|^gemini-1\.5|^gemini-pro$|^chat-bison|^text-bison/i;
-let MODEL = localStorage.getItem(LS.model) || 'gemini-2.5-flash';
-// Kayıtlı model emekli/eski ise SİL → ilk çağrıda otomatik yeniden keşfedilir
-if(EMEKLI.test(MODEL)){ MODEL='gemini-2.5-flash'; localStorage.removeItem(LS.model); }
-let modelTazelendi=false; // 404 sonrası tek seferlik otomatik onarım bayrağı
+/* 2) Canlı model keşfi (kendi kendine onaran, modeller arası otomatik geçiş) */
+let MODEL = (localStorage.getItem(LS.model)||'').trim();
+if(!MODEL || /embedding|bison|aqa|imagen|veo/i.test(MODEL)){ MODEL='gemini-2.5-flash'; }
 const LATEST_MAP = {
   'gemini-flash-latest':'gemini-2.5-flash',
   'gemini-pro-latest':'gemini-2.5-pro',
   'gemini-flash-lite-latest':'gemini-2.5-flash-lite'
 };
+function modelSkor(n){ n=String(n).toLowerCase();
+  if(/2\.5-flash$/.test(n))return 100;
+  if(/2\.5-flash(?!.*lite)/.test(n))return 96;
+  if(/2\.0-flash(?!.*lite)/.test(n))return 92;
+  if(/(2\.5|2\.0)-flash-lite/.test(n))return 88;
+  if(/flash(?!.*lite)/.test(n))return 80;
+  if(/flash/.test(n))return 76;
+  if(/2\.5-pro|2\.0-pro/.test(n))return 70;
+  if(/1\.5-flash/.test(n))return 55;
+  if(/pro/.test(n))return 50;
+  if(/1\.5/.test(n))return 45;
+  return 30;
+}
 async function modelKesfet(force){
   const k = ringKey(); if(!k) return false;
   try{
     const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+k);
     if(!r.ok) return false;
     const d = await r.json();
-    const usable = (d.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent'))
-      .map(m=>m.name.replace('models/','')).filter(n=>!EMEKLI.test(n));
-    // 'latest' takma adlarını kanonik isme eşle
-    const norm = [...new Set(usable.map(n=>LATEST_MAP[n]||n))];
+    let usable = (d.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent'))
+      .map(m=>m.name.replace('models/',''))
+      .filter(n=>!/embedding|aqa|imagen|veo|gemma|learnlm|bison/i.test(n))
+      .map(n=>LATEST_MAP[n]||n);
+    const norm=[...new Set(usable)].sort((a,b)=>modelSkor(b)-modelSkor(a));
     window._modelListesi = norm;
-    // Kayıtlı model listede yoksa ya da zorla yenileniyorsa en iyi çalışanı seç
     if(norm.length && (force || !norm.includes(MODEL))){
-      const pref = norm.find(n=>/2\.5-flash$/.test(n)) || norm.find(n=>n.includes('flash')&&!n.includes('lite'))
-        || norm.find(n=>n.includes('flash')) || norm[0];
-      if(pref){ MODEL=pref; localStorage.setItem(LS.model,MODEL); return true; }
+      MODEL = norm[0]; localStorage.setItem(LS.model,MODEL);
     }
-    return norm.includes(MODEL);
+    return norm.length>0;
   }catch(e){ return false; }
+}
+function modelAdaylari(){
+  const kotu=window._kotuModel||new Set();
+  const liste=(window._modelListesi||[]).slice().sort((a,b)=>modelSkor(b)-modelSkor(a));
+  const on=(MODEL && !kotu.has(MODEL))?[MODEL]:[];
+  const yedek=['gemini-2.5-flash','gemini-flash-latest','gemini-2.0-flash','gemini-2.5-flash-lite','gemini-1.5-flash','gemini-1.5-pro'];
+  let aday=[...new Set([...on,...liste,...yedek])].filter(n=>!kotu.has(n));
+  if(!aday.length) aday=[...new Set([...liste,...yedek])]; // son çare: model tamamen boş olsa bile dene
+  if(!aday.length) aday=['gemini-2.5-flash']; // en son güvence
+  return aday;
 }
 
 /* 3) Akıllı hata yönetimi -------------------------------------- */
@@ -501,13 +519,13 @@ function hataMetni(status, body){
   if(status===400 && b.includes('api key not valid')) return 'Geçersiz API anahtarı — bu anahtar silinip yenisi alınmalı.';
   if(status===400 && b.includes('invalid')) return 'İstek biçimi hatalı — otomatik düzeltilip yeniden denendi.';
   if(status===401||status===403) return 'Yetkisiz/geçersiz anahtar — anahtarı sil, aistudio.google.com/apikey adresinden yenisini al.';
-  if(status===404) return 'Model bulunamadı ve otomatik onarım da başarısız oldu. Lütfen anahtarının Generative Language (Gemini) API erişiminin açık olduğunu kontrol et.';
+  if(status===404) return 'Uygun model aranıyor…';
   if(status===429) return 'Kota doldu (dakikalık/günlük). Başka anahtar denenecek ya da biraz sonra tekrar dene.';
   if(status===503) return 'Sunucu meşgul (503) — biraz sonra yeniden dene.';
   return 'Bir hata oluştu ('+status+'). İnternet ve anahtarı kontrol et.';
 }
 
-/* 5) Anahtar testi (RING atlanır, orijinal fetch) -------------- */
+/* 5) Anahtar testi -------------- */
 async function anahtarTest(key){
   try{
     const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+encodeURIComponent(key));
@@ -520,31 +538,20 @@ async function anahtarTest(key){
   }catch(e){ return {ok:false,durum:'ag',mesaj:'🔴 Ağ hatası'}; }
 }
 
-/* Çekirdek üretim — metin + görsel/PDF (vision), streaming ------ */
-async function generateContent(parts, {onChunk, system}={}){
-  if(!RING.keys.length){ throw {kullanici:'Önce ⚙️ Ayarlar\'dan ücretsiz Gemini API anahtarı gir.'}; }
-  const body = {
-    contents:[{role:'user',parts}],
-    generationConfig:{ temperature:0.6, thinkingConfig:{thinkingBudget:0} }
-  };
-  if(system) body.systemInstruction = {parts:[{text:system}]};
-
-  let lastErr='';
+/* Tek model için üretim (streaming + non-stream + anahtar rotasyonu) */
+async function _tekModelUret(mdl, parts, opt){
+  const {onChunk, body}=opt; let lastErr='';
   for(let t=0; t<RING.keys.length; t++){
     const key = ringKey();
-    // Önce streaming dene
     try{
-      const url='https://generativelanguage.googleapis.com/v1beta/models/'+MODEL+':streamGenerateContent?alt=sse&key='+key;
+      const url='https://generativelanguage.googleapis.com/v1beta/models/'+mdl+':streamGenerateContent?alt=sse&key='+key;
       const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
       if(!r.ok){
         const tx = await r.text(); lastErr = hataMetni(r.status,tx);
-        if(r.status===404 && !modelTazelendi){ modelTazelendi=true; const ok=await modelKesfet(true); if(ok){ t--; continue; } }
-        if(r.status===400 && /thinking|responseModalities/i.test(tx)){
-          delete body.generationConfig.thinkingConfig;
-        }
+        if(r.status===404 || (r.status===400 && /not found|not supported|does not exist|is not found/i.test(tx))) throw {modelYok:true,kullanici:lastErr};
+        if(r.status===400 && /thinking|responseModalities/i.test(tx)){ delete body.generationConfig.thinkingConfig; t--; continue; }
         if(r.status===429||r.status===503){ ringNext(); continue; }
         if(r.status===401||r.status===403||(r.status===400&&/api key not valid/i.test(tx))){ ringNext(); continue; }
-        // diğer 400: non-stream'e düş
         throw new Error('stream-fail');
       }
       const reader=r.body.getReader(); const dec=new TextDecoder(); let buf='',full='';
@@ -564,21 +571,50 @@ async function generateContent(parts, {onChunk, system}={}){
       if(full) return full;
       throw new Error('empty');
     }catch(e){
-      // non-stream fallback
+      if(e && e.modelYok) throw e;
+      // non-stream fallback (aynı model/anahtar)
       try{
-        const url='https://generativelanguage.googleapis.com/v1beta/models/'+MODEL+':generateContent?key='+key;
+        const url='https://generativelanguage.googleapis.com/v1beta/models/'+mdl+':generateContent?key='+key;
         const r2=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
         if(!r2.ok){ const tx=await r2.text(); lastErr=hataMetni(r2.status,tx);
-          if(r2.status===404 && !modelTazelendi){ modelTazelendi=true; const ok=await modelKesfet(true); if(ok){ t--; continue; } }
+          if(r2.status===404 || (r2.status===400 && /not found|not supported|does not exist/i.test(tx))) throw {modelYok:true,kullanici:lastErr};
           ringNext(); continue; }
         const d=await r2.json();
         const tx=d?.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
         if(tx){ onChunk&&onChunk(tx); return tx; }
         lastErr='Boş yanıt döndü.'; ringNext(); continue;
-      }catch(e2){ lastErr=lastErr||'Ağ hatası.'; ringNext(); continue; }
+      }catch(e2){ if(e2 && e2.modelYok) throw e2; lastErr=lastErr||'Ağ hatası.'; ringNext(); continue; }
     }
   }
-  throw {kullanici:lastErr||'Tüm anahtarlar denendi, yanıt alınamadı.'};
+  throw {kullanici:lastErr||'Bu modelde yanıt alınamadı.'};
+}
+
+/* Çekirdek üretim — metin + görsel/PDF (vision). Model bulunamazsa sıradakine otomatik geçer. */
+async function generateContent(parts, {onChunk, system}={}){
+  if(!RING.keys.length){ throw {kullanici:'Önce ⚙️ Ayarlar\'dan ücretsiz Gemini API anahtarı gir.'}; }
+  if(!window._modelListesi || !window._modelListesi.length){ await modelKesfet(true); }
+  const body = { contents:[{role:'user',parts}], generationConfig:{ temperature:0.6, thinkingConfig:{thinkingBudget:0} } };
+  if(system) body.systemInstruction = {parts:[{text:system}]};
+  const adaylar = modelAdaylari();
+  let lastErr='', modelYokSay=0;
+  for(const mdl of adaylar){
+    try{
+      const out = await _tekModelUret(mdl, parts, {onChunk, body});
+      if(MODEL!==mdl){ MODEL=mdl; localStorage.setItem(LS.model,MODEL); }
+      return out;
+    }catch(e){
+      lastErr = (e&&e.kullanici)||lastErr;
+      if(e && e.modelYok){ window._kotuModel=window._kotuModel||new Set(); window._kotuModel.add(mdl); modelYokSay++; continue; }
+      continue;
+    }
+  }
+  // Her aday 404 verdiyse: bir kez daha canlı keşif deneyip son bir tur at
+  if(modelYokSay && !window._sonKesif){ window._sonKesif=true; window._kotuModel=new Set();
+    const ok=await modelKesfet(true);
+    if(ok){ try{ const out=await generateContent(parts,{onChunk,system}); window._sonKesif=false; return out; }catch(e3){ window._sonKesif=false; lastErr=(e3&&e3.kullanici)||lastErr; } }
+    else window._sonKesif=false;
+  }
+  throw {kullanici: (modelYokSay? 'Anahtarının Gemini (Generative Language) API erişimi kapalı görünüyor. Google AI Studio\'da anahtarı yeniden oluştur ya da farklı anahtar ekle.' : (lastErr||'Yanıt alınamadı. İnternet ve anahtarı kontrol et.')) };
 }
 const generateText = (prompt,opt={})=>generateContent([{text:prompt}],opt);
 
@@ -1532,7 +1568,7 @@ function setBodyCiz(){
     '<button class="btn gh sm" onclick="keyYapistir()">📥 Panodan Yapıştır</button>'+
     '<button class="btn tl sm" onclick="keyTestEt()">🧪 Anahtarları Test Et</button></div>'+
     '<div id="keyDurum"></div>'+
-    '<div class="kutu" style="margin-top:14px"><b>Aktif model:</b> <span id="setModel">'+MODEL+'</span> <button class="btn gh sm" style="margin-left:8px" onclick="modelYenile()">🔄 Modelleri yenile</button></div>'+
+    '<div class="kutu" style="margin-top:14px"><b>Aktif model:</b> <span id="setModel">'+MODEL+'</span> <button class="btn gh sm" style="margin-left:8px" onclick="modelYenile()">🔄 Modelleri yenile</button><div class="note">Model otomatik seçilir; elle girmene gerek yok. Model boş kalsa bile uygulama çalışan modeli kendisi bulur.</div></div>'+
     '<h3 class="pt" style="margin-top:18px">📺 Yüzen düğmeler</h3><div id="togList"></div>'+
     '<div class="btnrow"><button class="btn gh sm" onclick="ZIRVE_kontrolleriGeriGetir();togListCiz()">Hepsini Göster</button>'+
     '<button class="btn gh sm" onclick="konumSifirla()">📍 Konumları Sıfırla</button></div>'+
@@ -1554,7 +1590,7 @@ async function keyTestEt(){
   }
   box.innerHTML=h||'<p class="note">Kayıtlı anahtar yok.</p>';
 }
-function modelYenile(){modelKesfet().then(()=>{document.getElementById('setModel').textContent=MODEL;toast('Model: '+MODEL);});}
+function modelYenile(){window._kotuModel=new Set();window._sonKesif=false;modelKesfet(true).then(ok=>{document.getElementById('setModel').textContent=MODEL;toast(ok?('Model: '+MODEL):'Model listesi alınamadı — anahtarı kontrol et');});}
 function togListCiz(){
   const l=document.getElementById('togList');if(!l)return;let h='';
   ZIRVE_kontroller.forEach(k=>{ if(k.kalici)return;
@@ -1661,7 +1697,7 @@ function init(){
   kontrolKur({id:'asistan',ikon:'✨',cls:'assist',onTap:asAc,gizliBayrak:'zirve_asistan_gizli',dx:12,dy:314});
   kontrolKur({id:'ayarlar',ikon:'⚙️',cls:'settings',onTap:setAc,kalici:true,dx:12,dy:78});
   warnBand();
-  setTimeout(modelKesfet,600);
+  setTimeout(()=>modelKesfet(true),300);
   if(!localStorage.getItem(LS.hos)) setTimeout(()=>hosAc(false),500);
 }
 init();
