@@ -738,14 +738,15 @@ function modelSkor(n){ n=String(n).toLowerCase();
   return 30;
 }
 async function modelKesfet(force){
+  if(!RING.keys.length && kasaAcik()){ window._modelListesi=['gemini-2.5-flash','gemini-2.0-flash','gemini-2.5-flash-lite']; if(!/^gemini-2\.(5|0)-flash/.test(MODEL)) MODEL='gemini-2.5-flash'; return true; }
   const k = (typeof anahtarSirala==='function'?anahtarSirala()[0]:null) || ringKey(); if(!k) return false;
   try{
-    const r = await fetch('https://generativelanguage.googleapis.com/v1beta/models?key='+k);
+    const r = await sureliFetch('https://generativelanguage.googleapis.com/v1beta/models?key='+k,{},12000);
     if(!r.ok) return false;
     const d = await r.json();
     let usable = (d.models||[]).filter(m=>(m.supportedGenerationMethods||[]).includes('generateContent'))
       .map(m=>m.name.replace('models/',''))
-      .filter(n=>!/embedding|aqa|imagen|veo|gemma|learnlm|bison/i.test(n))
+      .filter(n=>!/embedding|aqa|imagen|veo|gemma|learnlm|bison|tts|image|audio|live|native|computer|robotics|thinking|exp/i.test(n))
       .map(n=>LATEST_MAP[n]||n);
     const norm=[...new Set(usable)].sort((a,b)=>modelSkor(b)-modelSkor(a));
     window._modelListesi = norm;
@@ -763,12 +764,14 @@ function modelAdaylari(){
   let aday=[...new Set([...on,...liste,...yedek])].filter(n=>!kotu.has(n));
   if(!aday.length) aday=[...new Set([...liste,...yedek])]; // son çare: model tamamen boş olsa bile dene
   if(!aday.length) aday=['gemini-2.5-flash']; // en son güvence
-  return aday;
+  if(!RING.keys.length && kasaAcik()){ const iyi=['gemini-2.5-flash','gemini-2.0-flash','gemini-2.5-flash-lite']; aday=[...new Set([...(iyi.includes(MODEL)?[MODEL]:[]),...iyi])]; }
+  return aday.slice(0,4);
 }
 
 /* 3) Akıllı hata yönetimi -------------------------------------- */
 function hataMetni(status, body){
   const b = (body||'').toString().toLowerCase();
+  if(!RING.keys.length && kasaAcik() && (status===400||status===401||status===403) && /key|anahtar|permission|denied/.test(b)) return 'Yapay zekâ şu an yanıt vermedi. ⚙️ Ayarlar → 🔐 Anahtar kasası → 🩺 Test et ile kontrol et; kasada anahtar yoksa ekle.';
   if(status===400 && b.includes('api key not valid')) return 'Geçersiz API anahtarı — bu anahtar silinip yenisi alınmalı.';
   if(status===400 && b.includes('invalid')) return 'İstek biçimi hatalı — otomatik düzeltilip yeniden denendi.';
   if(status===401||status===403) return 'Yetkisiz/geçersiz anahtar — anahtarı sil, aistudio.google.com/apikey adresinden yenisini al.';
@@ -806,17 +809,25 @@ function anahtarSirala(){
   return [...taze,...dolu];
 }
 
+/* v6.1 — süre sınırı: hiçbir istek sonsuza kadar beklemesin */
+function sureliFetch(url,init,ms){
+  const ac=new AbortController(); const t=setTimeout(()=>{ try{ac.abort();}catch(e){} },Math.max(2000,ms||40000));
+  const i2=Object.assign({},init||{},{signal:ac.signal});
+  return fetch(url,i2).catch(e=>{ clearTimeout(t); throw e; });
+}
+function aiKalan(){ return window._aiBitis ? window._aiBitis-Date.now() : 60000; }
 /* Tek model için üretim (streaming + non-stream + akıllı anahtar sırası) */
 async function _tekModelUret(mdl, parts, opt){
   const {onChunk, body, kota}=opt; let lastErr='';
   const keys=anahtarSirala();
   for(let t=0; t<keys.length; t++){
     const key = keys[t];
+    if(aiKalan()<4000) throw {kullanici:'Yapay zekâ şu an çok yavaş yanıt veriyor. Biraz sonra 🔄 Tekrar dene; sürerse ⚙️ Ayarlar → 🔐 Anahtar kasası → 🩺 Test et.',zaman:true};
     const akis = !body.generationConfig.responseMimeType; // JSON modunda akış yerine tek parça
     try{
       if(!akis) throw new Error('nonstream');
       const url='https://generativelanguage.googleapis.com/v1beta/models/'+mdl+':streamGenerateContent?alt=sse&key='+key;
-      const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+      const r = await sureliFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},Math.min(38000,aiKalan()));
       if(!r.ok){
         const tx = await r.text(); lastErr = hataMetni(r.status,tx);
         if(r.status===404 || (r.status===400 && /not found|not supported|does not exist|is not found/i.test(tx))) throw {modelYok:true,kullanici:lastErr};
@@ -843,10 +854,11 @@ async function _tekModelUret(mdl, parts, opt){
       if(full){ kotaTemizle(key); return full; }
       throw new Error('empty');
     }catch(e){
-      if(e && e.modelYok) throw e;
+      if(e && (e.modelYok||e.zaman)) throw e;
       try{
         const url='https://generativelanguage.googleapis.com/v1beta/models/'+mdl+':generateContent?key='+key;
-        const r2=await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+        if(aiKalan()<4000) throw {kullanici:'Yapay zekâ şu an çok yavaş yanıt veriyor. Biraz sonra 🔄 Tekrar dene; sürerse ⚙️ Ayarlar → 🔐 Anahtar kasası → 🩺 Test et.',zaman:true};
+        const r2=await sureliFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},Math.min(38000,aiKalan()));
         if(!r2.ok){ const tx=await r2.text(); lastErr=hataMetni(r2.status,tx);
           if(r2.status===404 || (r2.status===400 && /not found|not supported|does not exist/i.test(tx))) throw {modelYok:true,kullanici:lastErr};
           if(r2.status===400 && /responseMimeType|response_mime_type/i.test(tx) && body.generationConfig.responseMimeType){ delete body.generationConfig.responseMimeType; t--; continue; }
@@ -857,7 +869,7 @@ async function _tekModelUret(mdl, parts, opt){
         const tx=d?.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
         if(tx){ kotaTemizle(key); onChunk&&onChunk(tx); return tx; }
         lastErr='Boş yanıt döndü.'; continue;
-      }catch(e2){ if(e2 && e2.modelYok) throw e2; lastErr=lastErr||'Ağ hatası.'; continue; }
+      }catch(e2){ if(e2 && (e2.modelYok||e2.zaman)) throw e2; lastErr=(e2&&e2.name==='AbortError')?'Yapay zekâ şu an yoğun, biraz sonra tekrar deneyin.':(lastErr||'İnternete ulaşılamadı, bağlantını kontrol edip tekrar dene.'); continue; }
     }
   }
   throw {kullanici:lastErr||'Bu modelde yanıt alınamadı.'};
@@ -866,6 +878,8 @@ async function _tekModelUret(mdl, parts, opt){
 /* Çekirdek üretim — metin + görsel/PDF (vision). Her anahtar × her model denenir; model bulunamazsa sıradakine geçer. */
 async function generateContent(parts, {onChunk, system, json, temperature}={}){
   if(!RING.keys.length && !kasaAcik()){ throw {kullanici:'Yapay zekâ bağlı değil — ⚙️ Ayarlar → 🔐 Anahtar kasası\'nı kontrol et.'}; }
+  const _disCagri=!window._aiBitis; if(_disCagri) window._aiBitis=Date.now()+(parts.some(p=>p.inlineData)?60000:45000);
+  try{
   if(!window._modelListesi || !window._modelListesi.length){ await modelKesfet(true); }
   const body = { contents:[{role:'user',parts}], generationConfig:{ temperature:(temperature!=null?temperature:0.6), thinkingConfig:{thinkingBudget:0} } };
   if(json) body.generationConfig.responseMimeType='application/json';
@@ -873,6 +887,7 @@ async function generateContent(parts, {onChunk, system, json, temperature}={}){
   const adaylar = modelAdaylari();
   let lastErr='', modelYokSay=0, denenen=0; const kota={};
   for(const mdl of adaylar){
+    if(aiKalan()<4000){ lastErr='Yapay zekâ şu an yoğun, biraz sonra tekrar deneyin.'; break; }
     try{
       denenen++;
       const out = await _tekModelUret(mdl, parts, {onChunk, body, kota});
@@ -880,13 +895,14 @@ async function generateContent(parts, {onChunk, system, json, temperature}={}){
       return out;
     }catch(e){
       lastErr = (e&&e.kullanici)||lastErr;
+      if(e && e.zaman) break;
       if(e && e.modelYok){ window._kotuModel=window._kotuModel||new Set(); window._kotuModel.add(mdl); modelYokSay++; denenen--; continue; }
       continue;
     }
   }
   // Tüm modellerde 429 alan anahtarı işaretle (60 dk alta iner)
   Object.keys(kota).forEach(k=>{ if(kota[k]>=Math.max(1,denenen)) kotaIsaretle(k); });
-  if(modelYokSay && !window._sonKesif){ window._sonKesif=true; window._kotuModel=new Set();
+  if(modelYokSay && !window._sonKesif && aiKalan()>15000){ window._sonKesif=true; window._kotuModel=new Set();
     const ok=await modelKesfet(true);
     if(ok){ try{ const out=await generateContent(parts,{onChunk,system,json,temperature}); window._sonKesif=false; return out; }catch(e3){ window._sonKesif=false; lastErr=(e3&&e3.kullanici)||lastErr; } }
     else window._sonKesif=false;
@@ -894,6 +910,7 @@ async function generateContent(parts, {onChunk, system, json, temperature}={}){
   const hepsiKota = Object.keys(kota).length && Object.keys(kota).length>=RING.keys.length;
   throw {kullanici: hepsiKota ? (kasaAcik()?'Yapay zekâ şu an yoğun, biraz sonra tekrar deneyin.':'Kota doldu: tüm anahtarların günlük/dakikalık kotası dolu. ⚙️ Ayarlar\'dan birkaç ücretsiz anahtar daha ekle (her anahtar ayrı kota) ya da biraz sonra tekrar dene; kota her gün sıfırlanır.')
     : (modelYokSay && (!lastErr || /Uygun model/.test(lastErr)) ? 'Anahtarının Gemini (Generative Language) API erişimi kapalı görünüyor. Google AI Studio\'da anahtarı yeniden oluştur ya da farklı anahtar ekle.' : (lastErr||'Yanıt alınamadı. İnternet ve anahtarı kontrol et.')) };
+  }finally{ if(_disCagri) window._aiBitis=0; }
 }
 const generateText = (prompt,opt={})=>generateContent([{text:prompt}],opt);
 
@@ -1153,6 +1170,17 @@ function otoCozumTetikle(){
   clearTimeout(_otoZamanlayici);
   _otoZamanlayici=setTimeout(()=>{ if(!window._analizSuruyor) evrakAnaliz(); },700);
 }
+function gorselKucult(dataUrl){
+  return new Promise(res=>{
+    const img=new Image();
+    img.onload=()=>{ try{
+      const MAX=1600; let w=img.naturalWidth, h=img.naturalHeight; if(!w||!h) return res(null);
+      const k=Math.min(1,MAX/Math.max(w,h)); w=Math.round(w*k); h=Math.round(h*k);
+      const c=document.createElement('canvas'); c.width=w; c.height=h; const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,w,h); x.drawImage(img,0,0,w,h);
+      res(c.toDataURL('image/jpeg',0.8)); }catch(e){ res(null); } };
+    img.onerror=()=>res(null); img.src=dataUrl;
+  });
+}
 function dosyaOku(f){
   return new Promise(res=>{
     if(f.size>19*1024*1024){ toast('⚠️ '+f.name+' çok büyük (20 MB üstü) — sayfa sayfa foto çekip yükle'); return res(null); }
@@ -1161,7 +1189,10 @@ function dosyaOku(f){
       const b64=String(reader.result).split(',')[1];
       let mime=f.type||'';
       if(!mime){ if(/\.pdf$/i.test(f.name)) mime='application/pdf'; else if(/\.(jpe?g)$/i.test(f.name)) mime='image/jpeg'; else if(/\.png$/i.test(f.name)) mime='image/png'; else if(/\.(txt)$/i.test(f.name)) mime='text/plain'; else mime='application/octet-stream'; }
-      res({name:f.name||('evrak-'+Date.now()),mime,b64,thumb:mime.startsWith('image/')?reader.result:''});
+      const sonuc={name:f.name||('evrak-'+Date.now()),mime,b64,thumb:mime.startsWith('image/')?reader.result:''};
+      if(mime.startsWith('image/') && !/gif|svg/.test(mime)){
+        gorselKucult(reader.result).then(k=>{ if(k && k.length<reader.result.length*1.05){ sonuc.mime='image/jpeg'; sonuc.b64=k.split(',')[1]; sonuc.thumb=k; } res(sonuc); });
+      }else res(sonuc);
     };
     reader.onerror=()=>res(null);
     reader.readAsDataURL(f);
@@ -1311,6 +1342,8 @@ async function evrakAnaliz(){
   const sonuc=document.getElementById('analizSonuc');
   sonuc.innerHTML='<div class="panel"><div class="spin"><div class="sp"></div><span id="spMsg">Evrak okunuyor…</span></div><div class="note">Belgeyi okuyorum, seni ilgilendiren kısmı ve senden isteneni çıkarıyorum; ardından gereken belgeleri senin adına hazırlayacağım.</div></div>';
   sonuc.scrollIntoView({behavior:'smooth',block:'start'});
+  const _bas=Date.now(); clearInterval(window._sureSay); window._sureSay=setInterval(()=>{ const e=document.getElementById('spSure'); if(!e||!window._analizSuruyor){ clearInterval(window._sureSay); return; } e.textContent=' · '+Math.round((Date.now()-_bas)/1000)+' sn'; },1000);
+  try{ const sp=document.getElementById('spMsg'); if(sp) sp.insertAdjacentHTML('afterend','<b id="spSure" style="color:var(--seal)"></b>'); }catch(e){}
   spinDon(['Evrak okunuyor…','Gönderen makam ve sayı tespit ediliyor…','Senden ne istendiği çıkarılıyor…','Son tarih ve bağlantılar aranıyor…','Hazırlanacak belgeler planlanıyor…']);
 
   const parts=[];
@@ -2395,7 +2428,7 @@ async function pwaYukle(){
 }
 
 /* ============ SÜRÜM ROZETİ + ÖZ-KONTROL ============ */
-const APP={surum:'6.0',tarih:'22.10.2026',satir:3506,kb:457,onceki:{surum:'5.0',satir:2284,kb:242},
+const APP={surum:'6.1',tarih:'27.10.2026',satir:3540,kb:460,onceki:{surum:'6.0',satir:3505,kb:457},
   yenilikler:['📡 Etkinlik Radarı (Beylikdüzü öncelikli satranç, akıl-zekâ, robotik, yapay zekâ, proje)','🔔 Telefona bildirim + otomatik hatırlatmalar (baris-kasa)','🛡️ Gönderim öncesi resmî yazı kontrolü','📱 Yeni simge, açılış ekranı, alt menü, sade ekran','🔐 Yapay zekâ anahtarları kasada; teknik hata kodu yok']};
 const MODULLER=['generateContent','radarCiz','modelKesfet','anahtarSirala','evrakAnaliz','analizGoster','paketBaslat','belgeUret','taslakUret','aiTakip','gerekenlerCiz','kadroListe','resmiRender','resmiPdf','resmiWord','gonderModalAc','takipCiz','icsIndir','tarihCoz','arsivCiz','initPWA','surumKontrol'];
 function modulKontrol(){ return MODULLER.map(f=>({f,ok:typeof window[f]==='function'})); }
@@ -2471,8 +2504,9 @@ init();
    v6 — BARIŞ KASA · BİLDİRİM · ETKİNLİK RADARI · GERÇEK UYGULAMA
    Kasa: baris-kasa · uyg: evrak
    ============================================================ */
-const SURUM=6.0;
+const SURUM=6.1;
 const YENILIKLER=[
+  '⚡ Evrak çözümleme çok daha hızlı: fotoğraf yüklemeden önce küçültülür, hiçbir istek 1 dakikadan uzun beklemez, geçen süre ekranda görünür',
   '📡 Etkinlik Radarı: Beylikdüzü öncelikli satranç, akıl-zekâ, robotik-kodlama, yapay zekâ ve proje yarışmaları tek listede',
   '🔔 Telefona bildirim: yaklaşan turnuva, son kayıt ve evrak son günleri kendiliğinden hatırlatılır; okunan bildirim silinir',
   '🛡️ Gönderim öncesi resmî yazı kontrolü: eksik sayı, konu, hitap, "arz/rica" ve boş [yer tutucu] uyarısı',
