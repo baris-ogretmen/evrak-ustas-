@@ -817,6 +817,7 @@ function anahtarSirala(){
 /* v6.1 — süre sınırı: hiçbir istek sonsuza kadar beklemesin */
 function sureliFetch(url,init,ms){
   const ac=new AbortController(); const t=setTimeout(()=>{ try{ac.abort();}catch(e){} },Math.max(2000,ms||40000));
+  try{ (window._acListe=window._acListe||[]).push(ac); if(window._acListe.length>20) window._acListe.shift(); }catch(e){}
   const i2=Object.assign({},init||{},{signal:ac.signal});
   return fetch(url,i2).catch(e=>{ clearTimeout(t); throw e; });
 }
@@ -1374,7 +1375,7 @@ async function evrakAnaliz(){
   const sonuc=document.getElementById('analizSonuc');
   sonuc.innerHTML='<div class="panel"><div class="spin"><div class="sp"></div><span id="spMsg">Evrak okunuyor…</span></div><div class="note">Genelde 10-40 saniye sürer, uzun evraklarda 1-2 dakikayı bulabilir — sayfayı kapatma. Belgeyi okuyorum, seni ilgilendiren kısmı ve senden isteneni çıkarıyorum; ardından gereken belgeleri senin adına hazırlayacağım.</div></div>';
   sonuc.scrollIntoView({behavior:'smooth',block:'start'});
-  const _bas=Date.now(); clearInterval(window._sureSay); window._sureSay=setInterval(()=>{ const e=document.getElementById('spSure'); if(!e||!window._analizSuruyor){ clearInterval(window._sureSay); return; } e.textContent=' · '+Math.round((Date.now()-_bas)/1000)+' sn'; },1000);
+  const _bas=Date.now(); clearInterval(window._sureSay); window._sureSay=setInterval(()=>{ const e=document.getElementById('spSure'); if(!e||!window._analizSuruyor){ clearInterval(window._sureSay); return; } e.textContent=' · '+(typeof sureMetin==='function'?sureMetin((Date.now()-_bas)/1000):Math.round((Date.now()-_bas)/1000)+' sn'); },1000);
   try{ const sp=document.getElementById('spMsg'); if(sp) sp.insertAdjacentHTML('afterend','<b id="spSure" style="color:var(--seal)"></b>'); }catch(e){}
   spinDon(['Evrak okunuyor…','Gönderen makam ve sayı tespit ediliyor…','Senden ne istendiği çıkarılıyor…','Son tarih ve bağlantılar aranıyor…','Hazırlanacak belgeler planlanıyor…']);
 
@@ -1395,7 +1396,10 @@ async function evrakAnaliz(){
     '"onerilen_belgeler":[{"ad":"hazırlanacak belgenin tam adı","aciklama":"ne işe yarar, tek cümle","gorev":"hangi görev adına","gonderilecek_makam":"KİME gidecek (tam makam adı)","gonderen_taraf":"ben | okul | belirsiz"}],'+
     '"gonderilecek_makam":"yanıtın gideceği makam","gonderen_taraf":"ben | okul | belirsiz","aciliyet":"düşük | orta | yüksek",'+
     '"onem":"kritik | yüksek | normal | düşük","onem_nedeni":"kullanıcı için neden bu kadar önemli, tek cümle",'+
-    '"firsat":"evet | hayır","firsat_nedeni":"tek cümle","uygun_calismalarim":["çalışmalar listesinden"],"firsat_onerisi":"nasıl başvurmalı"}\n'+(window._firsatIstemi||'')+'\n'+
+    '"firsat":"evet | hayır","firsat_nedeni":"tek cümle","uygun_calismalarim":["çalışmalar listesinden"],"firsat_onerisi":"nasıl başvurmalı",'+
+    '"nereye":"bilginin/belgenin gideceği yer (makam, form, e-posta, sistem)","gonderim_yolu":"form | eposta | dys | sistem | elden | diger","gonderim_adimlari":["kullanıcının gönderim için sırayla yapacağı 2-5 kısa adım"],'+
+    '"form_alanlari":[{"alan":"formda/sistemde sorulacak bilgi","deger":"KİMLİK\'ten doldurulmuş cevap; T.C. için {{TC}}"}],"resmi_yazi_gerekli":true,"eposta":{"kime":"","konu":"","metin":""},"eksik_bilgiler":["profilde olmayan ama gereken bilgi"]}\n'+
+    '- GÖNDERİM: Bu evrakı okul müdürü kullanıcıya iletti; işi kullanıcı yapar ve GÖNDERİMİ KENDİSİ yapar. form_alanlari: form/sistemde istenecek her bilgi (ad soyad, T.C., telefon, e-posta, branş/görev, okul, kurum kodu, ilçe, kademe…) — KİMLİK\'ten doldur, ASLA [ ] yer tutucu yazma, bilinmeyeni boş bırak ve eksik_bilgiler\'e ekle. resmi_yazi_gerekli: yazılı cevap/liste/üst yazı/dilekçe/onay isteniyorsa true; yalnızca form doldurma veya bilgi girişiyse false. eposta yalnızca gönderim e-postayla ise.\n'+(window._firsatIstemi||'')+'\n'+
     '- onem: Kullanıcının BİZZAT yapması gereken bir iş varsa ve son tarih 3 gün içindeyse, ya da adı/görevi/branşı (danışman öğretmen, sorumlu öğretmen, satranç/robotik/yapay zekâ/akıl-zekâ, okul öncesi, özel eğitim) açıkça geçiyorsa, ya da görevlendirme, tebligat, soruşturma, sınav görevi, zorunlu eğitim, veri girişi/form zorunluluğu varsa "kritik" ya da "yüksek" yaz. Yalnızca bilgi amaçlıysa "düşük".\n'+
     'KURALLAR:\n'+
     '- Evrak kullanıcının görevlerinden biriyle (okul öncesi/anaokulu; ilkokul-ortaokul yapay zekâ, robotik, kodlama, satranç, akıl-zekâ oyunları; rehabilitasyon/uzman öğreticilik) ilişkiliyse beni_ilgilendiriyor="evet" ve doğru görevi yaz. Okulun geneline gelen ve kullanıcının destek olacağı işler "kısmen".\n'+
@@ -2484,7 +2488,7 @@ async function pwaYukle(){
 }
 
 /* ============ SÜRÜM ROZETİ + ÖZ-KONTROL ============ */
-const APP={surum:'6.5',tarih:'28.10.2026',satir:4001,kb:510,onceki:{surum:'6.4',satir:3792,kb:488},
+const APP={surum:'6.6',tarih:'28.10.2026',satir:4150,kb:527,onceki:{surum:'6.5',satir:4001,kb:510},
   yenilikler:['📡 Etkinlik Radarı (Beylikdüzü öncelikli satranç, akıl-zekâ, robotik, yapay zekâ, proje)','🔔 Telefona bildirim + otomatik hatırlatmalar (baris-kasa)','🛡️ Gönderim öncesi resmî yazı kontrolü','📱 Yeni simge, açılış ekranı, alt menü, sade ekran','🔐 Yapay zekâ anahtarları kasada; teknik hata kodu yok']};
 const MODULLER=['generateContent','radarCiz','modelKesfet','anahtarSirala','evrakAnaliz','analizGoster','paketBaslat','belgeUret','taslakUret','aiTakip','gerekenlerCiz','kadroListe','resmiRender','resmiPdf','resmiWord','gonderModalAc','takipCiz','icsIndir','tarihCoz','arsivCiz','initPWA','surumKontrol'];
 function modulKontrol(){ return MODULLER.map(f=>({f,ok:typeof window[f]==='function'})); }
@@ -2560,8 +2564,11 @@ init();
    v6 — BARIŞ KASA · BİLDİRİM · ETKİNLİK RADARI · GERÇEK UYGULAMA
    Kasa: baris-kasa · uyg: evrak
    ============================================================ */
-const SURUM=6.5;
+const SURUM=6.6;
 const YENILIKLER=[
+  '⚡ Tek seferde otomatik: evrak çözülürken gönderime hazır paket de aynı anda hazırlanır — ikinci bekleme yok',
+  '📄 Resmî yazı gerekiyorsa arka planda kendiliğinden yazılır; editör açılıp ekranı kapatmaz',
+  '⏳ Süre "1 dk 20 sn" diye görünür; çalışırken ekran kendiliğinden açık kalır',
   '📦 Gönderime hazır paket: nereye gideceği, adımlar, forma yazacakların (dokun-kopyala) ve resmî yazı — gönderim sende',
   '🪪 Kimlik bilgilerin bir kez: ad, T.C., telefon, e-posta, okul — her belgeye kendiliğinden işlenir; görev/branş belge başına seçilir',
   '⏳ Ekranı kapatsan da: çözümleme bitince bildirim gelir, bağlantı kesilirse açınca kaldığı yerden devam eder',
@@ -3713,7 +3720,7 @@ async function mudurPaketi(kaynakMetin){
   const d=sonAnaliz||{}; const k=kurumGet(); const mad=mudurAd();
   const mevcut=kaynakMetin||'';
   modal6('📲 '+mad+' Bey\'e gönderim','<div class="spin"><div class="sp"></div><span id="spMsg">Mesaj ve resmî yazı hazırlanıyor…</span><b id="mpSure" style="color:var(--seal)"></b></div><div class="note">Evrakı okuyup müdürüne gidecek her şeyi senin adına yazıyorum.</div>');
-  const bas=Date.now(); const zt=setInterval(()=>{ const e=document.getElementById('mpSure'); if(!e){ clearInterval(zt); return; } e.textContent=' · '+Math.round((Date.now()-bas)/1000)+' sn'; },1000);
+  const bas=Date.now(); const zt=setInterval(()=>{ const e=document.getElementById('mpSure'); if(!e){ clearInterval(zt); return; } e.textContent=' · '+(typeof sureMetin==='function'?sureMetin((Date.now()-bas)/1000):Math.round((Date.now()-bas)/1000)+' sn'); },1000);
   const bugun=new Date().toLocaleDateString('tr-TR');
   const istem='Bugün '+bugun+'.\n'+kurumMetni()+'\n\nGELEN EVRAK ÇÖZÜMLEMESİ:\n'+JSON.stringify({konu:d.konu,gonderen_makam:d.gonderen_makam,sayi:d.sayi,tarih:d.tarih,ne_isteniyor:d.ne_isteniyor,benden_isteniyor:d.benden_isteniyor,son_tarih:d.son_tarih,detaylar:d.detaylar,istenen_ekler:d.istenen_ekler,belgedeki_linkler:d.belgedeki_linkler,ilgili_gorev:d.ilgili_gorev,gonderilecek_makam:d.gonderilecek_makam,yarisma:d.yarisma})+
     (mevcut?('\n\nKULLANICININ HAZIRLADIĞI BELGE (resmî yazı olarak bunu kullan, gerekirse düzelt):\n'+mevcut):'')+
@@ -3914,7 +3921,7 @@ async function _gonderimPaketi(yeniden){
   if(!yeniden) window._seciliGorev=window._seciliGorev && PK._icin===d ? window._seciliGorev : (d.ilgili_gorev? (gorevler().map(x=>x.unvan+' — '+x.kurum).find(v=>trNorm(v).indexOf(trNorm(String(d.ilgili_gorev)).slice(0,18))>=0) || (gorevler().find(x=>x.asil)? (gorevler().find(x=>x.asil).unvan+' — '+gorevler().find(x=>x.asil).kurum):'')) : '');
   if(!o.ad){ modal6('📦 Gönderime hazır paket','<p class="note" style="margin-top:0">Belgelere adın yazılsın diye bir kez gir:</p>'+eksikKimlikHTML(['tel','eposta'])); return; }
   modal6('📦 Gönderime hazır paket','<div class="spin"><div class="sp"></div><span>Her şeyi senin adına hazırlıyorum…</span><b id="pkSure" style="color:var(--seal)"></b></div><div class="note">Gönderilecek yer, adımlar, form bilgilerin ve gerekiyorsa resmî yazı. Ekranı kapatırsan bitince bildirim gelir.</div>');
-  const bas=Date.now(); const zt=setInterval(()=>{ const e=document.getElementById('pkSure'); if(!e){ clearInterval(zt); return; } e.textContent=' · '+Math.round((Date.now()-bas)/1000)+' sn'; },1000);
+  const bas=Date.now(); const zt=setInterval(()=>{ const e=document.getElementById('pkSure'); if(!e){ clearInterval(zt); return; } e.textContent=' · '+(typeof sureMetin==='function'?sureMetin((Date.now()-bas)/1000):Math.round((Date.now()-bas)/1000)+' sn'); },1000);
   const bugun=new Date().toLocaleDateString('tr-TR');
   const formLink=((d.belgedeki_linkler||[]).map(l=>l&&l.url).find(u=>/forms\.gle|docs\.google\.com\/forms|form/i.test(u||''))||'');
   const istem='Bugün '+bugun+'.\n'+kurumMetni()+'\n\nGELEN EVRAK (okul müdürü bunu kullanıcıya iletti; işi kullanıcı yapacak ve GÖNDERİMİ KENDİSİ yapacak):\n'+
@@ -3987,6 +3994,148 @@ function pkEposta(){ const e=PK.eposta; const ek=PK.gerekli?'\n\n(Ek: '+PK.basli
 function pkYaziDuzenle(){
   document.getElementById('hosBody').innerHTML='<label class="fl">Resmî yazı</label><textarea id="pkYazi" style="min-height:360px;font-family:Times New Roman,serif">'+esc(PK.yazi)+'</textarea><div class="btnrow"><button class="btn pri" onclick="PK.yazi=document.getElementById(\'pkYazi\').value;MP.yazi=PK.yazi;MP.pdf=null;arsivKaydet(PK.baslik,PK.yazi);paketCizV65()">💾 Kaydet</button><button class="btn gh" onclick="paketCizV65()">Vazgeç</button></div>';
 }
+</script>
+<script id="v66-otomatik">
+/* ============================================================
+   v6.6 — TEK SEFERDE OTOMATİK: çözümleme + gönderime hazır paket aynı anda
+          (ikinci yapay zekâ beklemesi yok) · resmî yazı arka planda kendiliğinden
+          · süre "1 dk 20 sn" · ekran kendiliğinden açık kalır · geri dönünce takılmadan devam
+   ============================================================ */
+function sureMetin(sn){ sn=Math.max(0,Math.round(sn)); if(sn<60) return sn+' sn'; const d=Math.floor(sn/60), s=sn%60; return d+' dk'+(s?(' '+s+' sn'):''); }
+
+/* --- PK'yı çözümlemeden kur (ek yapay zekâ çağrısı yok) --- */
+function pkAnalizden(d){
+  const formLink=((d.belgedeki_linkler||[]).map(l=>l&&l.url).find(u=>/forms\.gle|docs\.google\.com\/forms|form/i.test(u||''))||'');
+  const ilk=(d.onerilen_belgeler||[])[0]; const p0=(typeof PAKET!=='undefined'&&PAKET[0])||{};
+  const gorevAd=(window._seciliGorev||'').split(' — ')[0];
+  PK={_icin:d,nereye:d.nereye||d.gonderilecek_makam||d.gonderen_makam||'',yol:d.gonderim_yolu||'',ozet:d.benden_isteniyor||d.ne_isteniyor||d.konu||'',son:d.son_tarih||'',
+    adimlar:(Array.isArray(d.gonderim_adimlari)&&d.gonderim_adimlari.length?d.gonderim_adimlari:(d.yapilacaklar||[])).slice(0,7),
+    alanlar:(Array.isArray(d.form_alanlari)?d.form_alanlari:[]).filter(x=>x&&x.alan).map(x=>{ let v=kimlikDoldur(String(x.deger||'')); if(gorevAd && /branş|brans|görev|gorev|unvan/i.test(x.alan)) v=gorevAd; return {alan:String(x.alan),deger:v}; }),
+    gerekli:d.resmi_yazi_gerekli===true && !!ilk, yazi:p0.durum==='hazir'?kimlikDoldur(p0.metin||''):'', yaziDurum:p0.durum||'', baslik:(ilk&&ilk.ad)||d.konu||'Resmi Yazi',
+    eposta:d.eposta&&d.eposta.kime?{kime:d.eposta.kime,konu:kimlikDoldur(d.eposta.konu||''),metin:kimlikDoldur(d.eposta.metin||'')}:null,
+    eksik:(Array.isArray(d.eksik_bilgiler)?d.eksik_bilgiler:[]).map(String),formLink};
+  // kimlikten boş kalanları doldur
+  const o=kimlik(); PK.alanlar.forEach(x=>{ const kk=kimlikAnahtar(x.alan); if(!x.deger && kk && o[kk]) x.deger=o[kk]; if(!x.deger && /^ad\s*soyad|adı soyadı/i.test(x.alan)) x.deger=o.ad; });
+  MP={yazi:PK.yazi,baslik:PK.baslik,gerekli:PK.gerekli,pdf:null,mesaj:''};
+  return PK;
+}
+/* paket görünümü: çözümleme sonucunun içinde (modal değil) */
+window.paketCizV65=function(){
+  const kutu=document.getElementById('paketKutu'); if(!kutu) return;
+  const o=kimlik();
+  let h='<h3 class="pt" style="margin-bottom:6px">📦 Gönderime hazır paket <span class="badge info">gönderim sende</span></h3>';
+  h+='<div style="font-size:15px;font-weight:700;color:var(--ink)">'+esc(PK.ozet)+'</div>'+
+    (PK.nereye?('<div class="note" style="margin:4px 0 0">📍 Nereye: <b>'+esc(PK.nereye)+'</b>'+(PK.son?(' · ⏰ '+esc(PK.son)):'')+'</div>'):'');
+  h+=gorevSecenekleri(window._seciliGorev);
+  const eksikIds=[...new Set(PK.eksik.map(x=>{ const t=trNorm(x); return /tc|kimlik/.test(t)?'tc':/tel/.test(t)?'tel':/posta|mail/.test(t)?'eposta':/adres/.test(t)?'okulAdres':''; }).filter(Boolean))];
+  PK.alanlar.forEach(x=>{ const k=kimlikAnahtar(x.alan); if(k && !x.deger && eksikIds.indexOf(k)<0) eksikIds.push(k); });
+  h+=eksikKimlikHTML(eksikIds.filter(id=>!o[id]));
+  if(PK.adimlar.length) h+='<label class="fl">🧭 Yapacakların</label><ol style="margin:4px 0 0;padding-left:1.3em;line-height:1.7">'+PK.adimlar.map(a=>'<li>'+esc(a)+'</li>').join('')+'</ol>';
+  if(PK.alanlar.length){
+    h+='<label class="fl">📋 Forma / sisteme yazacakların <span class="note" style="font-weight:400">(dokun → kopyalanır)</span></label>'+
+      PK.alanlar.map((x,i)=>'<div class="anSat" role="button" tabindex="0" onclick="pkKopya('+i+')" style="cursor:pointer"><span style="min-width:110px;font-weight:800;color:var(--ink);font-size:13px">'+esc(x.alan)+'</span><code style="white-space:normal">'+(x.deger?(/kimlik|t\.?c\.?\b/i.test(x.alan)?'•••••••'+esc(x.deger.slice(-4)):esc(x.deger)):'<span class="kirmizi">— eksik</span>')+'</code><span>📋</span></div>').join('')+
+      '<div class="btnrow"><button class="btn gh sm" onclick="pkHepsiKopya()">📋 Hepsini kopyala</button>'+(PK.formLink?'<a class="btn tl sm" href="'+esc(guvenliUrl(PK.formLink))+'" target="_blank" rel="noopener" style="text-decoration:none">📝 Formu aç</a>':'')+'</div>';
+  }else if(PK.formLink){ h+='<div class="btnrow"><a class="btn tl" href="'+esc(guvenliUrl(PK.formLink))+'" target="_blank" rel="noopener" style="text-decoration:none">📝 Formu aç</a></div>'; }
+  if(PK.gerekli){
+    if(PK.yazi){
+      const eksik=resmiKontrol(PK.yazi).filter(x=>!x.ok);
+      h+='<label class="fl">📄 Gönderime hazır resmî yazı</label><div style="background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:18px 16px;max-height:300px;overflow:auto"><style>'+RESMI_CSS+'</style><div class="resmi">'+resmiRender(PK.yazi)+'</div></div>'+
+        '<div class="note">'+(eksik.length?('⚠️ '+eksik.map(x=>esc(x.m)).join(' · ')):'🛡️ Resmî yazı kontrolü: her şey yerinde ✅')+'</div>'+
+        '<div style="display:grid;gap:8px;margin-top:10px"><button class="btn pri buyukBtn" onclick="mpDosyaGonder()">📤 PDF + Word olarak paylaş / gönder</button></div>'+
+        '<div class="btnrow"><button class="btn gh sm" onclick="oneriBelgeHazirla(0)">✏️ Düzenle</button><button class="btn gh sm" onclick="resmiPdf(PK.yazi,PK.baslik)">📄 PDF</button><button class="btn gh sm" onclick="resmiWord(PK.yazi,PK.baslik)">📝 Word</button><button class="btn gh sm" onclick="navigator.clipboard.writeText(resmiDuzMetin(PK.yazi)).then(()=>toast(\'🏛️ DYS için kopyalandı\')).catch(()=>{})">🏛️ DYS\'ye kopyala</button></div>';
+    }else if(PK.yaziDurum==='hata'){
+      h+='<div class="kutu">📄 Resmî yazı hazırlanamadı. <button class="btn pri sm" onclick="yaziArkaPlan(true)">🔄 Tekrar dene</button></div>';
+    }else{
+      h+='<div class="kutu"><div class="spin" style="padding:0"><div class="sp"></div><span>📄 Resmî yazı arka planda hazırlanıyor — bitince burada çıkar.</span></div></div>';
+    }
+  }
+  if(PK.eposta && PK.eposta.kime){
+    h+='<label class="fl">📧 E-posta</label><div class="kutu" style="margin-top:0"><b>Kime:</b> '+esc(PK.eposta.kime)+'<br><b>Konu:</b> '+esc(PK.eposta.konu)+'<div style="white-space:pre-wrap;margin-top:6px;font-size:13.5px">'+esc(PK.eposta.metin)+'</div></div><div class="btnrow"><button class="btn tl" onclick="pkEposta()">📧 E-postayı aç</button></div>';
+  }
+  kutu.innerHTML=h;
+  if(PK.gerekli && PK.yazi && !MP.pdf){ MP.yazi=PK.yazi; MP.baslik=PK.baslik; resmiPdfBlob(PK.yazi,PK.baslik).then(f=>{ MP.pdf=f; }).catch(()=>{}); }
+};
+/* görev değişince: AI'sız anında güncelle */
+window.gonderimPaketi=function(){ if(sonAnaliz){ pkAnalizden(sonAnaliz); const k=document.getElementById('paketKutu'); if(k){ paketCizV65(); k.scrollIntoView({behavior:'smooth'}); return; } } toast('Önce evrakı çözümle'); };
+window.mudurPaketi=window.gonderimPaketi;
+/* eksik bilgi kaydedince yerinde doldur */
+const _v66EksikKaydet=eksikKaydet;
+window.eksikKaydet=function(ids){ const kayit=PK; _v66EksikKaydet(ids); };
+
+/* --- resmî yazılar: editör açılmadan arka planda, kendiliğinden --- */
+let _yaziSuruyor=false;
+async function yaziArkaPlan(zorla){
+  const d=sonAnaliz; if(!d || d.resmi_yazi_gerekli===false || !(d.onerilen_belgeler||[]).length) return;
+  if(_yaziSuruyor) return; _yaziSuruyor=true;
+  const n=Math.min(d.onerilen_belgeler.length,3);
+  try{
+    for(let i=0;i<n;i++){
+      if(sonAnaliz!==d) return;
+      if(PAKET[i] && PAKET[i].durum==='hazir' && !zorla) continue;
+      PAKET[i]={durum:'hazirlaniyor'}; try{ paketCiz(); }catch(e){} if(i===0){ PK.yaziDurum='hazirlaniyor'; paketCizV65(); }
+      try{
+        const p=oneriParam(i);
+        const tam=p.istem+'\n\n'+kurumMetni()+'\n\n'+p.baglam+'\n\nBugünün tarihi: '+new Date().toLocaleDateString('tr-TR')+'\n\nŞimdi belgeyi eksiksiz yaz.';
+        const t=await generateContent([{text:tam}],{system:BELGE_SISTEM});
+        if(sonAnaliz!==d) return;
+        PAKET[i]={durum:'hazir',metin:t}; arsivKaydet(p.baslik,t);
+        if(i===0){ PK.yazi=t; PK.yaziDurum='hazir'; MP.pdf=null; paketCizV65(); if(document.hidden) kendimeOlay('Resmî yazı hazır ✅',p.baslik,'#gelen','yazi-hazir'); }
+      }catch(e){ PAKET[i]={durum:'hata'}; if(i===0){ PK.yaziDurum='hata'; paketCizV65(); } }
+      try{ paketCiz(); }catch(e){}
+    }
+  }finally{ _yaziSuruyor=false; }
+}
+window.paketBaslat=function(){ return yaziArkaPlan(false); }; // eski: editörü açıyordu → artık sessiz, arka planda
+
+/* --- çözümleme sonucu: paket aynı anda, satır içinde --- */
+const _v66Analiz=analizGoster;
+window.analizGoster=function(d){
+  if(d && !d._gorevSecildi){ d._gorevSecildi=true; const g=gorevler(); const ilg=trNorm(String(d.ilgili_gorev||'')); const es=g.find(x=>ilg && trNorm(x.unvan).indexOf(ilg.slice(0,14))>=0) || g.find(x=>ilg && ilg.indexOf(trNorm(x.unvan).slice(0,14))>=0) || g.find(x=>x.asil); window._seciliGorev=es?(es.unvan+' — '+es.kurum):''; }
+  _v66Analiz(d);
+  try{
+    const mp=document.querySelector('#analizSonuc .mudurPanel');
+    if(mp){ mp.id='paketKutu'; pkAnalizden(d); paketCizV65(); }
+    const ilg=String(d.beni_ilgilendiriyor||'').toLowerCase();
+    if(/evet|kısmen|kismen/.test(ilg) && d.resmi_yazi_gerekli===true && !(PAKET[0]&&PAKET[0].durum)) setTimeout(()=>yaziArkaPlan(false),300);
+  }catch(e){}
+};
+/* görev seçimi: AI beklemeden */
+window.gorevSecenekleri=function(sec){
+  const g=gorevler(); if(!g.length) return '';
+  return '<label class="fl">🎓 Bu belgede görünecek görevim / branşım</label><select id="pkGorev" onchange="window._seciliGorev=this.value;pkAnalizden(sonAnaliz);paketCizV65();if(sonAnaliz&&sonAnaliz.resmi_yazi_gerekli===true){PAKET={};PK.yazi=\'\';PK.yaziDurum=\'\';paketCizV65();yaziArkaPlan(true);}">'+
+    g.map(x=>{ const v=x.unvan+' — '+x.kurum; return '<option value="'+esc(v)+'"'+(v===sec?' selected':'')+'>'+esc(x.unvan)+(x.asil?' (asıl branş)':'')+' — '+esc(x.kurum)+'</option>'; }).join('')+'</select>';
+};
+
+/* --- süre: dakika + saniye --- */
+setInterval(()=>{ ['spSure','pkSure','mpSure'].forEach(id=>{ const e=document.getElementById(id); if(e && /(\d+) sn$/.test(e.textContent)){ const sn=+RegExp.$1; if(sn>=60) e.textContent=' · '+sureMetin(sn); } }); },250);
+
+/* --- ekran kendiliğinden açık kalsın (iPhone dahil) --- */
+let _uyanikVideo=null;
+function uyanikVideoBaslat(){
+  try{
+    if(!_uyanikVideo){
+      const v=document.createElement('video'); v.setAttribute('playsinline',''); v.setAttribute('muted',''); v.muted=true; v.loop=true;
+      v.style.cssText='position:fixed;width:1px;height:1px;opacity:0.01;left:0;bottom:0;pointer-events:none;z-index:-1';
+      v.src='data:video/mp4;base64,AAAAIGZ0eXBpc29tAAACAGlzb21pc28yYXZjMW1wNDEAAAMrbW9vdgAAAGxtdmhkAAAAAAAAAAAAAAAAAAAD6AAAB9AAAQAAAQAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAgAAAlV0cmFrAAAAXHRraGQAAAADAAAAAAAAAAAAAAABAAAAAAAAB9AAAAAAAAAAAAAAAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAABAAAAAAAAAAAAAAAAAABAAAAAABAAAAAQAAAAAAAkZWR0cwAAABxlbHN0AAAAAAAAAAEAAAfQAAAAAAABAAAAAAHNbWRpYQAAACBtZGhkAAAAAAAAAAAAAAAAAABAAAAAgABVxAAAAAAALWhkbHIAAAAAAAAAAHZpZGUAAAAAAAAAAAAAAABWaWRlb0hhbmRsZXIAAAABeG1pbmYAAAAUdm1oZAAAAAEAAAAAAAAAAAAAACRkaW5mAAAAHGRyZWYAAAAAAAAAAQAAAAx1cmwgAAAAAQAAAThzdGJsAAAAuHN0c2QAAAAAAAAAAQAAAKhhdmMxAAAAAAAAAAEAAAAAAAAAAAAAAAAAAAAAABAAEABIAAAASAAAAAAAAAABFUxhdmM2MC4zMS4xMDIgbGlieDI2NAAAAAAAAAAAAAAAGP//AAAALmF2Y0MBQsAK/+EAFmdCwArZHsBEAAADAAQAAAMACDxImSABAAVoy4PLIAAAABBwYXNwAAAAAQAAAAEAAAAUYnRydAAAAAAAAApAAAAKQAAAABhzdHRzAAAAAAAAAAEAAAACAABAAAAAABRzdHNzAAAAAAAAAAEAAAABAAAAHHN0c2MAAAAAAAAAAQAAAAEAAAACAAAAAQAAABxzdHN6AAAAAAAAAAAAAAACAAAChgAAAAoAAAAUc3RjbwAAAAAAAAABAAADWwAAAGJ1ZHRhAAAAWm1ldGEAAAAAAAAAIWhkbHIAAAAAAAAAAG1kaXJhcHBsAAAAAAAAAAAAAAAALWlsc3QAAAAlqXRvbwAAAB1kYXRhAAAAAQAAAABMYXZmNjAuMTYuMTAwAAAACGZyZWUAAAKYbWRhdAAAAnAGBf//bNxF6b3m2Ui3lizYINkj7u94MjY0IC0gY29yZSAxNjQgcjMxMDggMzFlMTlmOSAtIEguMjY0L01QRUctNCBBVkMgY29kZWMgLSBDb3B5bGVmdCAyMDAzLTIwMjMgLSBodHRwOi8vd3d3LnZpZGVvbGFuLm9yZy94MjY0Lmh0bWwgLSBvcHRpb25zOiBjYWJhYz0wIHJlZj0zIGRlYmxvY2s9MTowOjAgYW5hbHlzZT0weDE6MHgxMTEgbWU9aGV4IHN1Ym1lPTcgcHN5PTEgcHN5X3JkPTEuMDA6MC4wMCBtaXhlZF9yZWY9MSBtZV9yYW5nZT0xNiBjaHJvbWFfbWU9MSB0cmVsbGlzPTEgOHg4ZGN0PTAgY3FtPTAgZGVhZHpvbmU9MjEsMTEgZmFzdF9wc2tpcD0xIGNocm9tYV9xcF9vZmZzZXQ9LTIgdGhyZWFkcz0xIGxvb2thaGVhZF90aHJlYWRzPTEgc2xpY2VkX3RocmVhZHM9MCBucj0wIGRlY2ltYXRlPTEgaW50ZXJsYWNlZD0wIGJsdXJheV9jb21wYXQ9MCBjb25zdHJhaW5lZF9pbnRyYT0wIGJmcmFtZXM9MCB3ZWlnaHRwPTAga2V5aW50PTI1MCBrZXlpbnRfbWluPTEgc2NlbmVjdXQ9NDAgaW50cmFfcmVmcmVzaD0wIHJjX2xvb2thaGVhZD00MCByYz1jcmYgbWJ0cmVlPTEgY3JmPTIzLjAgcWNvbXA9MC42MCBxcG1pbj0wIHFwbWF4PTY5IHFwc3RlcD00IGlwX3JhdGlvPTEuNDAgYXE9MToxLjAwAIAAAAAOZYiEBb///w9FAAFPf4AAAAAGQZo4CvqA';
+      document.body.appendChild(v); _uyanikVideo=v;
+    }
+    const p=_uyanikVideo.play(); if(p&&p.catch) p.catch(()=>{});
+  }catch(e){}
+}
+function uyanikVideoDurdur(){ try{ if(_uyanikVideo) _uyanikVideo.pause(); }catch(e){} }
+const _v66Uyanik=ekraniUyanikTut; window.ekraniUyanikTut=async function(){ uyanikVideoBaslat(); return _v66Uyanik(); };
+const _v66Birak=ekranUyanikBirak; window.ekranUyanikBirak=function(){ uyanikVideoDurdur(); return _v66Birak(); };
+/* ilk dokunuşta videoyu hazırla (iPhone otomatik oynatmaya izin vermez) */
+document.addEventListener('touchstart',function ilk(){ try{ uyanikVideoBaslat(); setTimeout(uyanikVideoDurdur,300); }catch(e){} document.removeEventListener('touchstart',ilk); },{passive:true});
+
+/* --- arka plandan dönünce: donmuş isteği bekleme, hemen yeniden başlat --- */
+let _gizliZaman=0;
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ _gizliZaman=Date.now(); return; }
+  if(window._isSuruyor && _gizliZaman && Date.now()-_gizliZaman>4000){
+    try{ (window._acListe||[]).forEach(a=>{ try{ a.abort(); }catch(e){} }); window._acListe=[]; }catch(e){}
+  }
+});
 </script>
 <script id="baris-kasa">
 (function(){ var VARSAYILAN='https://baris-kasa.barilkay466.workers.dev'; try{ var u0=localStorage.getItem('zkasa_url'); if(u0) window.ZKASA_URL=u0; }catch(e){}
