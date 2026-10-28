@@ -905,7 +905,7 @@ async function _tekModelUret(mdl, parts, opt){
 }
 
 /* Çekirdek üretim — metin + görsel/PDF (vision). Her anahtar × her model denenir; model bulunamazsa sıradakine geçer. */
-async function generateContent(parts, {onChunk, system, json, temperature}={}){
+async function generateContent(parts, {onChunk, system, json, temperature, tools}={}){
   if(!RING.keys.length && !kasaAcik()){ throw {kullanici:'Yapay zekâ bağlı değil — ⚙️ Ayarlar → 🔐 Anahtar kasası\'nı kontrol et.'}; }
   const _disCagri=!window._aiBitis; if(_disCagri){ window._aiBas=Date.now(); window._sonHamHata=''; } if(_disCagri) window._aiBitis=Date.now()+(parts.some(p=>p.inlineData)?150000:110000);
   try{
@@ -914,6 +914,7 @@ async function generateContent(parts, {onChunk, system, json, temperature}={}){
   if(json) body.generationConfig.responseMimeType='application/json';
   if(system) body.systemInstruction = {parts:[{text:system}]};
   body.contents[0].parts=parts.map(p=>Object.assign({},p)); // her çağrı kendi kopyası
+  if(tools) body.tools=tools;
   uyumUygula(body);
   const adaylar = modelAdaylari();
   let lastErr='', modelYokSay=0, denenen=0; const kota={};
@@ -935,7 +936,7 @@ async function generateContent(parts, {onChunk, system, json, temperature}={}){
   Object.keys(kota).forEach(k=>{ if(kota[k]>=Math.max(1,denenen)) kotaIsaretle(k); });
   if(modelYokSay && !window._sonKesif && aiKalan()>15000){ window._sonKesif=true; window._kotuModel=new Set();
     const ok=await modelKesfet(true);
-    if(ok){ try{ const out=await generateContent(parts,{onChunk,system,json,temperature}); window._sonKesif=false; return out; }catch(e3){ window._sonKesif=false; lastErr=(e3&&e3.kullanici)||lastErr; } }
+    if(ok){ try{ const out=await generateContent(parts,{onChunk,system,json,temperature,tools}); window._sonKesif=false; return out; }catch(e3){ window._sonKesif=false; lastErr=(e3&&e3.kullanici)||lastErr; } }
     else window._sonKesif=false;
   }
   const hepsiKota = Object.keys(kota).length && Object.keys(kota).length>=RING.keys.length;
@@ -1135,7 +1136,7 @@ const PROFIL_VARSAYILAN={
   ad:'', iletisim:'', il:'', ilce:'', mudur:'Mehmet Emin Ateş', kurumKodu:'',
   gorevler:[
     {unvan:'Okul Öncesi Öğretmeni', kurum:'Özel Değişim Koleji', kademe:'Anaokulu', dersler:'Okul öncesi eğitim', asil:true},
-    {unvan:'Bilişim / Yapay Zekâ - Robotik - Kodlama - Satranç - Akıl ve Zekâ Oyunları Öğretmeni', kurum:'Özel Değişim Koleji', kademe:'İlkokul ve Ortaokul', dersler:'Yapay zekâ, robotik, kodlama, satranç, akıl ve zekâ oyunları', asil:false},
+    {unvan:'Yapay Zekâ, Robotik-Kodlama, Satranç, Akıl ve Zekâ Oyunları ve Eğitim Koçluğu Öğretmeni', kurum:'Özel Değişim Koleji', kademe:'İlkokul ve Ortaokul', dersler:'Yapay zekâ, robotik, kodlama, satranç, akıl ve zekâ oyunları', asil:false},
     {unvan:'Uzman Öğretici', kurum:'Mavi İklim Özel Eğitim ve Rehabilitasyon Merkezi', kademe:'Özel eğitim / rehabilitasyon', dersler:'', asil:false}
   ]
 };
@@ -2483,7 +2484,7 @@ async function pwaYukle(){
 }
 
 /* ============ SÜRÜM ROZETİ + ÖZ-KONTROL ============ */
-const APP={surum:'6.4',tarih:'28.10.2026',satir:3792,kb:488,onceki:{surum:'6.3',satir:3787,kb:487},
+const APP={surum:'6.5',tarih:'28.10.2026',satir:4001,kb:510,onceki:{surum:'6.4',satir:3792,kb:488},
   yenilikler:['📡 Etkinlik Radarı (Beylikdüzü öncelikli satranç, akıl-zekâ, robotik, yapay zekâ, proje)','🔔 Telefona bildirim + otomatik hatırlatmalar (baris-kasa)','🛡️ Gönderim öncesi resmî yazı kontrolü','📱 Yeni simge, açılış ekranı, alt menü, sade ekran','🔐 Yapay zekâ anahtarları kasada; teknik hata kodu yok']};
 const MODULLER=['generateContent','radarCiz','modelKesfet','anahtarSirala','evrakAnaliz','analizGoster','paketBaslat','belgeUret','taslakUret','aiTakip','gerekenlerCiz','kadroListe','resmiRender','resmiPdf','resmiWord','gonderModalAc','takipCiz','icsIndir','tarihCoz','arsivCiz','initPWA','surumKontrol'];
 function modulKontrol(){ return MODULLER.map(f=>({f,ok:typeof window[f]==='function'})); }
@@ -2559,8 +2560,11 @@ init();
    v6 — BARIŞ KASA · BİLDİRİM · ETKİNLİK RADARI · GERÇEK UYGULAMA
    Kasa: baris-kasa · uyg: evrak
    ============================================================ */
-const SURUM=6.4;
+const SURUM=6.5;
 const YENILIKLER=[
+  '📦 Gönderime hazır paket: nereye gideceği, adımlar, forma yazacakların (dokun-kopyala) ve resmî yazı — gönderim sende',
+  '🪪 Kimlik bilgilerin bir kez: ad, T.C., telefon, e-posta, okul — her belgeye kendiliğinden işlenir; görev/branş belge başına seçilir',
+  '⏳ Ekranı kapatsan da: çözümleme bitince bildirim gelir, bağlantı kesilirse açınca kaldığı yerden devam eder',
   '⏳ Evrak çözümleme artık yarıda kesilmiyor: yapay zekâya 2,5 dakikaya kadar zaman tanınır, geçen süre canlı görünür',
   '📲 Müdüre tek dokunuş: selam mesajı + müdür imzalı resmî yazı (PDF/Word) hazır, WhatsApp\'ta onun sohbeti açılır',
   '🌟 Fırsat bandı: çalışmalarını gösterebileceğin çağrılar sarı bantla öne çıkar; başvuru metnin tek dokunuşla hazır',
@@ -3677,7 +3681,7 @@ window.analizGoster=function(d){
     const fb=firsatBantHTML(d);
     const ust=s.querySelector('.kritikBant');
     const kutu=document.createElement('div');
-    kutu.innerHTML=fb+'<div class="panel mudurPanel"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:200px"><b style="color:var(--ink);font-size:15.5px">📲 '+esc(mudurAd())+' Bey\'e hazır gönder</b><div class="note" style="margin:2px 0 0">Selam mesajı + gerekiyorsa müdür imzalı resmî yazı (PDF/Word) hazırlanır. Sen yalnızca WhatsApp\'ta "gönder"e basarsın; o da DYS\'den imzalayıp gönderir.</div></div>'+
+    kutu.innerHTML=fb+'<div class="panel mudurPanel"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:200px"><b style="color:var(--ink);font-size:15.5px">📦 Gönderime hazır paket</b><div class="note" style="margin:2px 0 0">Nereye gideceği, adımlar, forma yazacağın bilgiler (kopyala-yapıştır) ve gerekiyorsa resmî yazı (PDF/Word) — hepsini ben hazırlarım, gönderimi sen yaparsın.</div></div>'+
       '<button class="btn pri" style="min-height:52px" onclick="mudurPaketi()">🟢 Hepsini hazırla</button></div></div>';
     if(ust) ust.after(kutu); else s.prepend(kutu);
     if(fb && !d._firsatZil){ d._firsatZil=true; try{ zilEkle({id:'fr'+(d._id||Date.now()),em:'🌟',baslik:'Fırsat: '+(d.konu||'Yeni çağrı'),govde:d.firsat_nedeni||'Çalışmalarını gösterebilirsin',hash:'#takip'}); }catch(e){} }
@@ -3777,7 +3781,212 @@ function mpDuzenle(){
 }
 /* Belge editöründen de: mevcut taslakla müdüre gönder */
 const _eskiOvFootCiz=ovFootCiz;
-window.ovFootCiz=function(){ _eskiOvFootCiz(); const f=document.getElementById('ovFoot'); if(f) f.insertAdjacentHTML('afterbegin','<button class="btn tl sm" onclick="ovKapat();mudurPaketi(aiSonMetin)">🟢 Müdüre gönder</button>'); };
+window.ovFootCiz=function(){ _eskiOvFootCiz(); const f=document.getElementById('ovFoot'); if(f) f.insertAdjacentHTML('afterbegin','<button class="btn tl sm" onclick="ovKapat();mudurPaketi()">📦 Gönderime hazırla</button>'); };
+</script>
+<script id="v65-paket">
+/* ============================================================
+   v6.5 — 🪪 KİMLİK (bir kez gir, her yerde) · 📦 GÖNDERİME HAZIR PAKET (gönderim sende)
+          · ⏳ ekran kapansa da: ekranı açık tut, bitince bildirim, kesilirse kaldığı yerden
+   ============================================================ */
+const GOREV_DUZELT_SURUM='1';
+(function gorevDuzelt(){ // "Bilişim" değil — fiilen girdiğin dersler
+  try{ if(localStorage.getItem('evrak_gorev_duzelt')===GOREV_DUZELT_SURUM) return;
+    const k=kurumGet(); let d=false;
+    (k.gorevler||[]).forEach(g=>{ if(/^Bilişim\s*\//i.test(g.unvan||'')){ g.unvan='Yapay Zekâ, Robotik-Kodlama, Satranç, Akıl ve Zekâ Oyunları ve Eğitim Koçluğu Öğretmeni'; g.kademe='Anaokulu – 8. sınıf'; g.dersler='Yapay zekâ, robotik-kodlama, satranç, akıl ve zekâ oyunları, eğitim koçluğu'; d=true; } });
+    if(d) localStorage.setItem(LS.kurum,JSON.stringify(k));
+    localStorage.setItem('evrak_gorev_duzelt',GOREV_DUZELT_SURUM);
+  }catch(e){}
+})();
+try{ PROFIL_VARSAYILAN.gorevler[1]={unvan:'Yapay Zekâ, Robotik-Kodlama, Satranç, Akıl ve Zekâ Oyunları ve Eğitim Koçluğu Öğretmeni',kurum:'Özel Değişim Koleji',kademe:'Anaokulu – 8. sınıf',dersler:'Yapay zekâ, robotik-kodlama, satranç, akıl ve zekâ oyunları, eğitim koçluğu',asil:false}; }catch(e){}
+
+/* ---- 🪪 Kimlik alanları ---- */
+const KIMLIK_ALAN=[
+  {id:'tc',ad:'T.C. Kimlik No',ph:'11 haneli',tip:'tel',gizli:true},
+  {id:'tel',ad:'Cep telefonu',ph:'05xx xxx xx xx',tip:'tel'},
+  {id:'eposta',ad:'E-posta (Gmail)',ph:'ornek@gmail.com',tip:'email'},
+  {id:'okulAdi',ad:'Okul / kurum adı',ph:'Özel Değişim Koleji',def:'Özel Değişim Koleji'},
+  {id:'okulAdres',ad:'Okul adresi',ph:'Mahalle, cadde, no — Beylikdüzü / İstanbul'},
+  {id:'okulTel',ad:'Okul telefonu',ph:'0212 ...',tip:'tel'},
+  {id:'hizmet',ad:'Deneyim / hizmet',ph:'Örn: 11 yıl özel eğitim uzman öğreticiliği, ... yıl kolej',def:'11 yıl özel eğitim uzman öğreticiliği; Özel Değişim Koleji'}
+];
+function kimlik(){ const k=kurumGet(); const o={ad:(k.ad||'').trim()}; KIMLIK_ALAN.forEach(a=>{ o[a.id]=String(k[a.id]!=null?k[a.id]:(a.def||'')).trim(); }); if(!o.tel && k.iletisim){ const m=String(k.iletisim).match(/0?5\d{2}[\s\d]{7,}/); if(m) o.tel=m[0].trim(); } if(!o.eposta && k.iletisim){ const m=String(k.iletisim).match(/[^\s\/]+@[^\s\/]+/); if(m) o.eposta=m[0]; } return o; }
+(function kimlikFormu(){
+  const ad=document.getElementById('kAd'); if(!ad || document.getElementById('kimlikKutu')) return;
+  const il=document.getElementById('kIletisim'); if(il){ const w=il.closest('div'); if(w) w.style.display='none'; }
+  const satir=ad.closest('.row');
+  const h='<div id="kimlikKutu" class="kutu" style="border-color:var(--brass)"><b>🪪 Kimlik bilgilerim</b><div class="note" style="margin-top:2px">Bir kez yaz; dilekçe, form ve resmî yazıların hepsine kendiliğinden işlenir. Bu bilgiler yalnızca bu cihazda saklanır; T.C. kimlik numaran yapay zekâya hiç gönderilmez, belgeye cihazında eklenir.</div>'+
+    '<div class="row two">'+KIMLIK_ALAN.map(a=>'<div><label class="fl">'+a.ad+'</label><input id="kk_'+a.id+'" '+(a.tip?'type="'+(a.gizli?'password':a.tip)+'" inputmode="'+(a.tip==='tel'?'numeric':a.tip)+'"':'')+' placeholder="'+esc(a.ph)+'" autocomplete="off"></div>').join('')+'</div></div>';
+  if(satir) satir.insertAdjacentHTML('afterend',h);
+})();
+const _v65KurumAc=kurumAyarAc;
+window.kurumAyarAc=function(){ _v65KurumAc(); const o=kimlik(); KIMLIK_ALAN.forEach(a=>{ const i=document.getElementById('kk_'+a.id); if(i) i.value=o[a.id]||''; }); };
+const _v65KurumKaydet=kurumKaydet;
+window.kurumKaydet=function(){
+  const deg={}; KIMLIK_ALAN.forEach(a=>{ const i=document.getElementById('kk_'+a.id); if(i) deg[a.id]=i.value.trim(); });
+  if(deg.tc && !/^\d{11}$/.test(deg.tc.replace(/\s/g,''))){ toast('⚠️ T.C. kimlik no 11 haneli olmalı'); return; }
+  const il=document.getElementById('kIletisim'); if(il) il.value=[deg.tel,deg.eposta].filter(Boolean).join(' / ');
+  _v65KurumKaydet();
+  const k=kurumGet(); Object.assign(k,deg); if(deg.tc) k.tc=deg.tc.replace(/\s/g,''); localStorage.setItem(LS.kurum,JSON.stringify(k));
+  try{ rozetleriCiz(); }catch(e){}
+};
+/* yapay zekâya giden profil metnine kimlik (T.C. hariç → {{TC}}) */
+const _v65KurumMetni=kurumMetni;
+window.kurumMetni=function(){
+  const o=kimlik();
+  const ek='\nKİMLİK (kullanıcının kendi bilgileri — belgede/formda gerektiğinde AYNEN kullan, ASLA [Adın] gibi yer tutucu bırakma):\n'+
+    '  Ad Soyad: '+(o.ad||'{{AD}}')+'\n  T.C. Kimlik No: gerekiyorsa TAM OLARAK {{TC}} yaz (gerçek numara cihazda eklenir)\n'+
+    (o.tel?'  Cep telefonu: '+o.tel+'\n':'')+(o.eposta?'  E-posta: '+o.eposta+'\n':'')+
+    '  Okul: '+(o.okulAdi||'Özel Değişim Koleji')+(o.okulAdres?(' · Adres: '+o.okulAdres):'')+(o.okulTel?(' · Tel: '+o.okulTel):'')+'\n'+
+    (o.hizmet?'  Deneyim: '+o.hizmet+'\n':'')+
+    (window._seciliGorev?('  BU BELGEDE KULLANILACAK GÖREV/BRANŞ (kullanıcı seçti): '+window._seciliGorev+'\n'):'');
+  return _v65KurumMetni()+ek;
+};
+/* yapay zekâ çıktısında kimlik belirteçlerini cihazda doldur */
+function kimlikDoldur(t){
+  if(t==null) return t; const o=kimlik(); let s=String(t);
+  const r=(re,v)=>{ if(v) s=s.replace(re,v); };
+  r(/\{\{\s*TC\s*\}\}/g,o.tc); r(/\{\{\s*AD\s*\}\}/g,o.ad); r(/\{\{\s*TEL\s*\}\}/g,o.tel); r(/\{\{\s*EPOSTA\s*\}\}/g,o.eposta); r(/\{\{\s*OKUL\s*\}\}/g,o.okulAdi);
+  r(/\[(Adın|Adınız|Adın Soyadın|Adınız Soyadınız|Ad Soyadınız|Kullanıcının Ad[ıi] Soyad[ıi]|Kullanıcının Ad[ıi])\]/gi,o.ad);
+  r(/\[(Telefonunuz|Telefonun|Cep Telefonunuz)\]/gi,o.tel); r(/\[(E-?postanız|E-?postan|E-?posta Adresiniz)\]/gi,o.eposta);
+  r(/\[(T\.?C\.? Kimlik (No|Numaranız|Numaran)|TC Kimlik No(nuz)?)\]/gi,o.tc);
+  return s;
+}
+const _v65Gen=generateContent;
+window.generateContent=async function(parts,opt){
+  opt=Object.assign({},opt||{}); const oc=opt.onChunk; if(oc) opt.onChunk=t=>oc(kimlikDoldur(t));
+  return kimlikDoldur(await _v65Gen(parts,opt));
+};
+
+/* ---- ⏳ Ekran kapansa da: ekranı uyanık tut, bitince bildirim, kesilirse kaldığı yerden ---- */
+let _uyanik=null;
+async function ekraniUyanikTut(){ try{ if('wakeLock' in navigator && !_uyanik){ _uyanik=await navigator.wakeLock.request('screen'); _uyanik.addEventListener('release',()=>{ _uyanik=null; }); } }catch(e){} }
+function ekranUyanikBirak(){ try{ if(_uyanik){ _uyanik.release(); _uyanik=null; } }catch(e){} }
+let _bekleyenIs=null;
+function arkaPlanIs(ad,fn,basariMi,bildirim){
+  const sar=async function(){
+    let gizlendi=document.hidden; const izle=()=>{ if(document.hidden) gizlendi=true; else if(window._isSuruyor) ekraniUyanikTut(); };
+    document.addEventListener('visibilitychange',izle); window._isSuruyor=true; ekraniUyanikTut();
+    const once=basariMi.once(); let ok=false;
+    try{ await fn.apply(this,arguments); ok=basariMi.kontrol(once); }
+    finally{ window._isSuruyor=false; document.removeEventListener('visibilitychange',izle); ekranUyanikBirak(); }
+    if(ok && (document.hidden||gizlendi)){ const b=bildirim(); if(b) kendimeOlay(b.baslik,b.govde,b.hash,b.etiket); }
+    if(!ok && gizlendi){ _bekleyenIs={ad,fn:sar,args:[...arguments]}; if(!document.hidden) bekleyeniCalistir(); }
+    return ok;
+  };
+  return sar;
+}
+function bekleyeniCalistir(){
+  if(!_bekleyenIs || document.hidden) return; const j=_bekleyenIs; _bekleyenIs=null;
+  toast('🔄 Ekran kapanınca bağlantı kesildi — '+j.ad+' kaldığı yerden yeniden başlıyor');
+  setTimeout(()=>j.fn.apply(null,j.args),700);
+}
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden) bekleyeniCalistir(); });
+window.evrakAnaliz=arkaPlanIs('çözümleme',evrakAnaliz,{once:()=>sonAnaliz,kontrol:o=>!!sonAnaliz && sonAnaliz!==o},
+  ()=>({baslik:'Evrak hazır ✅',govde:(sonAnaliz&&sonAnaliz._kritik?'🚨 ÇOK ÖNEMLİ: ':'')+((sonAnaliz&&(sonAnaliz.benden_isteniyor||sonAnaliz.ne_isteniyor||sonAnaliz.konu))||'Çözümleme tamamlandı'),hash:'#gelen',etiket:'evrak-hazir'}));
+
+/* ---- 📦 GÖNDERİME HAZIR PAKET (her şeyi ben hazırlarım, gönderim sende) ---- */
+let PK={};
+function gorevSecenekleri(sec){
+  const g=gorevler(); if(!g.length) return '';
+  return '<label class="fl">🎓 Bu belgede görünecek görevim / branşım</label><select id="pkGorev" onchange="window._seciliGorev=this.value;gonderimPaketi(true)">'+
+    g.map(x=>{ const v=x.unvan+' — '+x.kurum; return '<option value="'+esc(v)+'"'+(v===sec?' selected':'')+'>'+esc(x.unvan)+(x.asil?' (asıl branş)':'')+' — '+esc(x.kurum)+'</option>'; }).join('')+'</select>';
+}
+function eksikKimlikHTML(gerekli){
+  const o=kimlik(); const eksik=[];
+  if(!o.ad) eksik.push(['ad','Ad soyad','text']);
+  (gerekli||[]).forEach(id=>{ const a=KIMLIK_ALAN.find(x=>x.id===id); if(a && !o[id] && !eksik.find(e=>e[0]===id)) eksik.push([id,a.ad,a.tip||'text']); });
+  if(!eksik.length) return '';
+  return '<div class="kutu" style="border-color:var(--seal);background:#fff7f7"><b>🪪 Bir kez yaz, hep kullanılsın:</b>'+eksik.map(e=>'<label class="fl">'+e[1]+'</label><input id="ek_'+e[0]+'" type="'+(e[0]==='tc'?'password':e[2])+'" inputmode="'+(e[2]==='tel'?'numeric':'text')+'">').join('')+
+    '<div class="btnrow"><button class="btn pri" onclick="eksikKaydet(['+eksik.map(e=>'\''+e[0]+'\'').join(',')+'])">💾 Kaydet ve hazırla</button></div></div>';
+}
+function eksikKaydet(ids){
+  const k=kurumGet();
+  ids.forEach(id=>{ const v=((document.getElementById('ek_'+id)||{}).value||'').trim(); if(v){ if(id==='ad') k.ad=v; else k[id]=id==='tc'?v.replace(/\s/g,''):v; } });
+  if(k.tc && !/^\d{11}$/.test(k.tc)) return toast('⚠️ T.C. kimlik no 11 haneli olmalı');
+  k.iletisim=[k.tel,k.eposta].filter(Boolean).join(' / ');
+  localStorage.setItem(LS.kurum,JSON.stringify(k)); try{ kurumChipCiz(); }catch(e){}
+  toast('💾 Kaydedildi — artık her belgede kullanılacak');
+  if(PK && PK.ozet){ const o=kimlik(); PK.alanlar.forEach(x=>{ const kk=kimlikAnahtar(x.alan); if(kk && !x.deger && o[kk]) x.deger=o[kk]; if(/^ad\s*soyad/i.test(x.alan) && !x.deger) x.deger=o.ad; }); PK.eksik=PK.eksik.filter(e=>{ const t=trNorm(e); const id=/tc|kimlik/.test(t)?'tc':/tel/.test(t)?'tel':/posta|mail/.test(t)?'eposta':/adres/.test(t)?'okulAdres':''; return !(id && o[id]); }); PK.yazi=kimlikDoldur(PK.yazi); paketCizV65(); }
+  else gonderimPaketi(true);
+}
+async function _gonderimPaketi(yeniden){
+  const d=sonAnaliz||{}; const o=kimlik();
+  if(!yeniden) window._seciliGorev=window._seciliGorev && PK._icin===d ? window._seciliGorev : (d.ilgili_gorev? (gorevler().map(x=>x.unvan+' — '+x.kurum).find(v=>trNorm(v).indexOf(trNorm(String(d.ilgili_gorev)).slice(0,18))>=0) || (gorevler().find(x=>x.asil)? (gorevler().find(x=>x.asil).unvan+' — '+gorevler().find(x=>x.asil).kurum):'')) : '');
+  if(!o.ad){ modal6('📦 Gönderime hazır paket','<p class="note" style="margin-top:0">Belgelere adın yazılsın diye bir kez gir:</p>'+eksikKimlikHTML(['tel','eposta'])); return; }
+  modal6('📦 Gönderime hazır paket','<div class="spin"><div class="sp"></div><span>Her şeyi senin adına hazırlıyorum…</span><b id="pkSure" style="color:var(--seal)"></b></div><div class="note">Gönderilecek yer, adımlar, form bilgilerin ve gerekiyorsa resmî yazı. Ekranı kapatırsan bitince bildirim gelir.</div>');
+  const bas=Date.now(); const zt=setInterval(()=>{ const e=document.getElementById('pkSure'); if(!e){ clearInterval(zt); return; } e.textContent=' · '+Math.round((Date.now()-bas)/1000)+' sn'; },1000);
+  const bugun=new Date().toLocaleDateString('tr-TR');
+  const formLink=((d.belgedeki_linkler||[]).map(l=>l&&l.url).find(u=>/forms\.gle|docs\.google\.com\/forms|form/i.test(u||''))||'');
+  const istem='Bugün '+bugun+'.\n'+kurumMetni()+'\n\nGELEN EVRAK (okul müdürü bunu kullanıcıya iletti; işi kullanıcı yapacak ve GÖNDERİMİ KENDİSİ yapacak):\n'+
+    JSON.stringify({konu:d.konu,gonderen_makam:d.gonderen_makam,sayi:d.sayi,tarih:d.tarih,ne_isteniyor:d.ne_isteniyor,benden_isteniyor:d.benden_isteniyor,son_tarih:d.son_tarih,detaylar:d.detaylar,istenen_ekler:d.istenen_ekler,belgedeki_linkler:d.belgedeki_linkler,belgedeki_epostalar:d.belgedeki_epostalar,gonderilecek_makam:d.gonderilecek_makam,yarisma:d.yarisma})+
+    (formLink?('\n\nFORM ADRESİ: '+formLink+' — açabiliyorsan formu oku ve sorularını AYNEN listele.'):'')+
+    '\n\nGÖREV: Bu iş için gönderime hazır, EKSİKSİZ paket hazırla. Gönderimi kullanıcı yapar; müdüre mesaj YAZMA. YALNIZCA şu JSON\'u döndür:\n'+
+    '{"nereye":"belgenin/bilginin gideceği yer (makam, form, e-posta, sistem)","gonderim_yolu":"form | eposta | dys | sistem | elden | diger","ozet":"tek cümle: ne yapılacak","son_gun":"GG.AA.YYYY SS:DD ya da boş",'+
+    '"adimlar":["kullanıcının sırayla yapacağı 2-6 kısa adım"],'+
+    '"form_alanlari":[{"alan":"formda/sistemde sorulacak alan","deger":"profilden doldurulmuş cevap"}],'+
+    '"resmi_yazi_gerekli":true|false,"resmi_yazi":"markdown ya da boş","yazi_baslik":"kısa dosya adı",'+
+    '"eposta":{"kime":"","konu":"","metin":""},"eksik_bilgiler":["profilde olmayan ama gereken bilgi adı (ör. tel, eposta, tc, okulAdres)"]}\n'+
+    'KURALLAR:\n- form_alanlari: form/sistemde istenecek her bilgi (ad soyad, T.C., telefon, e-posta, branş, görev, okul, kurum kodu, ilçe, kademe, proje adı vb.) — değerleri KİMLİK ve seçilen görevden doldur. T.C. için değer {{TC}}. Bilmediğin değeri boş bırak ve eksik_bilgiler\'e ekle; ASLA [ ] yer tutucu yazma.\n'+
+    '- resmi_yazi_gerekli: gelen yazı yazılı cevap, liste, üst yazı, dilekçe ya da onay istiyorsa true; yalnızca form doldurma/bilgi girişi ise false.\n'+
+    '- resmi_yazi: MEB Resmî Yazışma Yönetmeliği\'ne tam uygun, gönderilmeye hazır. Okul adına gidiyorsa: ortalı "T.C." / "BEYLİKDÜZÜ KAYMAKAMLIĞI" / "'+(o.okulAdi||'Özel Değişim Koleji')+' Müdürlüğü", "Sayı:" ve sağda tarih '+bugun+', "Konu:", BÜYÜK HARFLE hitap, "İlgi:" (gelen yazının tarih ve sayısı), gövde, üst makama "Bilgilerinizi ve gereğini arz ederim.", sağda müdür imza bloğu ('+mudurAd()+', Okul Müdürü), altta "Hazırlayan: '+o.ad+'" ve gerekiyorsa "Ek:". Kişisel başvuruysa kullanıcının kendi adına dilekçe (ad, görev, T.C. {{TC}}, telefon, imza).\n'+
+    '- eposta: yalnızca gönderim e-postayla ise doldur (evrakta yazan adres), değilse hepsi boş.\n- Kısa, net, Türkçe.';
+  try{
+    let raw;
+    try{ raw=await generateContent([{text:istem}],{temperature:0.2,tools:formLink?[{url_context:{}}]:undefined,system:'Sen MEB resmî yazışma uzmanı ve öğretmen asistanısın. Yalnızca istenen JSON\'u üret.'}); }
+    catch(e1){ raw=await generateContent([{text:istem}],{json:true,temperature:0.2,system:'Sen MEB resmî yazışma uzmanı ve öğretmen asistanısın. Yalnızca istenen JSON\'u üret.'}); }
+    raw=String(raw).replace(/```json|```/g,'').trim(); const m=raw.match(/\{[\s\S]*\}/); const j=JSON.parse(m?m[0]:raw);
+    PK={_icin:d,nereye:j.nereye||d.gonderilecek_makam||'',yol:j.gonderim_yolu||'',ozet:j.ozet||'',son:j.son_gun||d.son_tarih||'',adimlar:Array.isArray(j.adimlar)?j.adimlar:[],
+      alanlar:(Array.isArray(j.form_alanlari)?j.form_alanlari:[]).filter(x=>x&&x.alan).map(x=>({alan:String(x.alan),deger:kimlikDoldur(String(x.deger||''))})),
+      gerekli:!!j.resmi_yazi_gerekli && !!String(j.resmi_yazi||'').trim(),yazi:kimlikDoldur(String(j.resmi_yazi||'').trim()),baslik:String(j.yazi_baslik||d.konu||'Resmi Yazi').trim(),
+      eposta:j.eposta&&j.eposta.kime?{kime:j.eposta.kime,konu:kimlikDoldur(j.eposta.konu||''),metin:kimlikDoldur(j.eposta.metin||'')}:null,
+      eksik:(Array.isArray(j.eksik_bilgiler)?j.eksik_bilgiler:[]).map(x=>String(x)),formLink};
+    if(PK.gerekli) arsivKaydet(PK.baslik,PK.yazi);
+    MP={yazi:PK.yazi,baslik:PK.baslik,gerekli:PK.gerekli,pdf:null,mesaj:''};
+    paketCizV65();
+  }catch(e){
+    const b=document.getElementById('hosBody'); if(b) b.innerHTML='<p style="color:var(--err)">⚠️ '+esc((e&&e.kullanici)||'Hazırlanamadı.')+'</p><div class="btnrow"><button class="btn pri" onclick="gonderimPaketi(true)">🔄 Tekrar dene</button></div>';
+  }finally{ clearInterval(zt); }
+}
+const gonderimPaketi=arkaPlanIs('paket hazırlığı',_gonderimPaketi,{once:()=>PK,kontrol:o=>PK!==o && !!PK.ozet},()=>({baslik:'Gönderime hazır paket ✅',govde:PK.ozet||'Belgelerin hazır',hash:'#gelen',etiket:'paket-hazir'}));
+window.mudurPaketi=function(){ return gonderimPaketi(false); };
+function kimlikAnahtar(alan){ const a=trNorm(alan); return /t\.?c|kimlik/.test(a)?'tc':/telefon|cep|gsm/.test(a)?'tel':/e-?posta|mail/.test(a)?'eposta':/adres/.test(a)?'okulAdres':''; }
+function paketCizV65(){
+  const o=kimlik();
+  let h='<div class="kutu" style="margin-top:0;background:#f0fdf4;border-color:#86efac"><b>✅ Hazır — gönderim sende.</b><div style="margin-top:4px">'+esc(PK.ozet)+'</div>'+
+    (PK.nereye?('<div class="note" style="margin:4px 0 0">📍 Nereye: <b>'+esc(PK.nereye)+'</b>'+(PK.son?(' · ⏰ '+esc(PK.son)):'')+'</div>'):'')+'</div>';
+  h+=gorevSecenekleri(window._seciliGorev);
+  // eksik kimlik
+  const eksikIds=[...new Set(PK.eksik.map(x=>{ const t=trNorm(x); return /tc|kimlik/.test(t)?'tc':/tel/.test(t)?'tel':/posta|mail/.test(t)?'eposta':/adres/.test(t)?'okulAdres':/okul.*tel/.test(t)?'okulTel':''; }).filter(Boolean))];
+  PK.alanlar.forEach(x=>{ const k=kimlikAnahtar(x.alan); if(k && !x.deger && eksikIds.indexOf(k)<0) eksikIds.push(k); });
+  h+=eksikKimlikHTML(eksikIds.filter(id=>!o[id]));
+  if(PK.adimlar.length) h+='<label class="fl">🧭 Yapacakların</label><ol style="margin:4px 0 0;padding-left:1.3em;line-height:1.7">'+PK.adimlar.map(a=>'<li>'+esc(a)+'</li>').join('')+'</ol>';
+  if(PK.alanlar.length){
+    h+='<label class="fl">📋 Forma / sisteme yazacakların <span class="note" style="font-weight:400">(dokun → kopyalanır)</span></label>';
+    h+=PK.alanlar.map((x,i)=>'<div class="anSat" role="button" tabindex="0" onclick="pkKopya('+i+')" style="cursor:pointer"><span style="min-width:110px;font-weight:800;color:var(--ink);font-size:13px">'+esc(x.alan)+'</span><code style="white-space:normal">'+(x.deger?(/kimlik|t\.?c/i.test(x.alan)?'•••••••'+esc(x.deger.slice(-4)):esc(x.deger)):'<span class="kirmizi">— eksik</span>')+'</code><span>📋</span></div>').join('');
+    h+='<div class="btnrow"><button class="btn gh sm" onclick="pkHepsiKopya()">📋 Hepsini kopyala</button>'+(PK.formLink?'<a class="btn tl sm" href="'+esc(guvenliUrl(PK.formLink))+'" target="_blank" rel="noopener" style="text-decoration:none">📝 Formu aç</a>':'')+'</div>';
+  }else if(PK.formLink){ h+='<div class="btnrow"><a class="btn tl" href="'+esc(guvenliUrl(PK.formLink))+'" target="_blank" rel="noopener" style="text-decoration:none">📝 Formu aç</a></div>'; }
+  if(PK.gerekli){
+    const kontrol=resmiKontrol(PK.yazi); const eksik=kontrol.filter(x=>!x.ok);
+    h+='<label class="fl">📄 Gönderime hazır resmî yazı</label><div style="background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:18px 16px;max-height:300px;overflow:auto"><style>'+RESMI_CSS+'</style><div class="resmi">'+resmiRender(PK.yazi)+'</div></div>'+
+      '<div class="note">'+(eksik.length?('⚠️ '+eksik.map(x=>esc(x.m)).join(' · ')):'🛡️ Resmî yazı kontrolü: her şey yerinde ✅')+'</div>'+
+      '<div style="display:grid;gap:8px;margin-top:10px"><button class="btn pri buyukBtn" onclick="mpDosyaGonder()">📤 PDF + Word olarak paylaş / gönder</button></div>'+
+      '<div class="btnrow"><button class="btn gh sm" onclick="pkYaziDuzenle()">✏️ Düzenle</button><button class="btn gh sm" onclick="resmiPdf(PK.yazi,PK.baslik)">📄 PDF indir</button><button class="btn gh sm" onclick="resmiWord(PK.yazi,PK.baslik)">📝 Word indir</button><button class="btn gh sm" onclick="navigator.clipboard.writeText(resmiDuzMetin(PK.yazi)).then(()=>toast(\'🏛️ DYS için düz metin kopyalandı\')).catch(()=>{})">🏛️ DYS\'ye kopyala</button></div>';
+  }
+  if(PK.eposta && PK.eposta.kime){
+    h+='<label class="fl">📧 E-posta</label><div class="kutu" style="margin-top:0"><b>Kime:</b> '+esc(PK.eposta.kime)+'<br><b>Konu:</b> '+esc(PK.eposta.konu)+'<div style="white-space:pre-wrap;margin-top:6px;font-size:13.5px">'+esc(PK.eposta.metin)+'</div></div>'+
+      '<div class="btnrow"><button class="btn tl" onclick="pkEposta()">📧 E-postayı aç</button></div>';
+  }
+  h+='<div class="note" style="margin-top:12px">Gönderim sende: formu doldur ya da dosyayı ilgili yere ilet. Bu paket 🗄️ Arşiv\'e de kaydedildi.</div>';
+  document.getElementById('hosT').textContent='📦 Gönderime hazır paket';
+  document.getElementById('hosBody').innerHTML=h;
+  if(PK.gerekli){ resmiPdfBlob(PK.yazi,PK.baslik).then(f=>{ MP.pdf=f; }).catch(()=>{}); }
+}
+function pkKopya(i){ const x=PK.alanlar[i]; if(!x||!x.deger) return toast('Bu bilgi eksik — yukarıdan ekle'); navigator.clipboard.writeText(x.deger).then(()=>toast('📋 '+x.alan+' kopyalandı')).catch(()=>toast(x.deger)); }
+function pkHepsiKopya(){ navigator.clipboard.writeText(PK.alanlar.map(x=>x.alan+': '+(x.deger||'')).join('\n')).then(()=>toast('📋 Tüm bilgiler kopyalandı')).catch(()=>{}); }
+function pkEposta(){ const e=PK.eposta; const ek=PK.gerekli?'\n\n(Ek: '+PK.baslik+'.pdf)':''; location.href='mailto:'+encodeURIComponent(e.kime)+'?subject='+encodeURIComponent(e.konu)+'&body='+encodeURIComponent(e.metin+ek); if(PK.gerekli) setTimeout(()=>toast('📎 PDF\'i e-postaya eklemek için 📤 Paylaş\'ı kullan'),1200); }
+function pkYaziDuzenle(){
+  document.getElementById('hosBody').innerHTML='<label class="fl">Resmî yazı</label><textarea id="pkYazi" style="min-height:360px;font-family:Times New Roman,serif">'+esc(PK.yazi)+'</textarea><div class="btnrow"><button class="btn pri" onclick="PK.yazi=document.getElementById(\'pkYazi\').value;MP.yazi=PK.yazi;MP.pdf=null;arsivKaydet(PK.baslik,PK.yazi);paketCizV65()">💾 Kaydet</button><button class="btn gh" onclick="paketCizV65()">Vazgeç</button></div>';
+}
 </script>
 <script id="baris-kasa">
 (function(){ var VARSAYILAN='https://baris-kasa.barilkay466.workers.dev'; try{ var u0=localStorage.getItem('zkasa_url'); if(u0) window.ZKASA_URL=u0; }catch(e){}
