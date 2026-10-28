@@ -320,6 +320,11 @@
   details.panel summary::-webkit-details-marker{color:var(--brass)}
   #surumRozet{position:fixed;left:10px;bottom:10px;z-index:64;background:rgba(21,34,56,.92);color:#d1fae5;font-size:11.5px;font-weight:800;padding:6px 10px;border-radius:20px;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.25);border:1px solid rgba(201,162,75,.5)}
   .warnband{bottom:46px!important}
+  .kritikBant{background:linear-gradient(135deg,#b91c1c,#7f1d1d)!important;color:#fff;border:2px solid #fecaca!important;box-shadow:0 10px 30px rgba(185,28,28,.35)!important;animation:kritikNabiz 1.6s ease 3}
+  @keyframes kritikNabiz{50%{box-shadow:0 0 0 8px rgba(185,28,28,.18)}}
+  .tkart.kritik{border-left-color:#b91c1c!important;background:#fff7f7}
+  .firsatBant{background:linear-gradient(135deg,#fde68a,#f59e0b)!important;color:#3b2a00;border:2px solid #fbbf24!important;box-shadow:0 10px 30px rgba(245,158,11,.3)!important}
+  .mudurPanel{border:2px solid #86efac!important;background:linear-gradient(135deg,#f0fdf4,#ffffff)!important}
   #surumBanner{position:fixed;left:50%;top:calc(env(safe-area-inset-top,0px) + 82px);transform:translateX(-50%);z-index:150;background:var(--grad-ink);color:#fff;border:1px solid var(--brass);border-radius:14px;padding:10px 14px;font-size:13px;font-weight:700;box-shadow:0 10px 30px rgba(0,0,0,.35);display:flex;gap:10px;align-items:center;max-width:92vw;animation:tin .4s}
   #surumBanner button{background:none;border:none;color:#fff;font-size:16px;cursor:pointer;opacity:.75}
   #guncelBtn{position:fixed;right:10px;top:calc(env(safe-area-inset-top,0px) + 82px);z-index:160;background:#dc2626;color:#fff;border:none;border-radius:22px;padding:9px 14px;font-weight:800;font-size:13px;box-shadow:0 6px 20px rgba(220,38,38,.45);cursor:pointer;display:none;align-items:center;gap:8px;animation:guncelNabiz 1.6s infinite}
@@ -773,7 +778,7 @@ function hataMetni(status, body){
   const b = (body||'').toString().toLowerCase();
   if(!RING.keys.length && kasaAcik() && (status===400||status===401||status===403) && /key|anahtar|permission|denied/.test(b)) return 'Yapay zekâ şu an yanıt vermedi. ⚙️ Ayarlar → 🔐 Anahtar kasası → 🩺 Test et ile kontrol et; kasada anahtar yoksa ekle.';
   if(status===400 && b.includes('api key not valid')) return 'Geçersiz API anahtarı — bu anahtar silinip yenisi alınmalı.';
-  if(status===400 && b.includes('invalid')) return 'İstek biçimi hatalı — otomatik düzeltilip yeniden denendi.';
+  if(status===400 && b.includes('invalid')) return 'Yapay zekâ isteği kabul etmedi; farklı biçimlerle denedim ama olmadı. 🔄 Tekrar dene — sürerse alttaki "🔧 Ayrıntı"yı bana gönder.';
   if(status===401||status===403) return 'Yetkisiz/geçersiz anahtar — anahtarı sil, aistudio.google.com/apikey adresinden yenisini al.';
   if(status===404) return 'Uygun model aranıyor…';
   if(status===429) return 'Yapay zekâ şu an yoğun, biraz sonra tekrar deneyin.';
@@ -816,6 +821,26 @@ function sureliFetch(url,init,ms){
   return fetch(url,i2).catch(e=>{ clearTimeout(t); throw e; });
 }
 function aiKalan(){ return window._aiBitis ? window._aiBitis-Date.now() : 60000; }
+/* v6.2 — "İstek biçimi hatalı" gelirse isteği adım adım sadeleştirip yeniden dene (ve öğren) */
+function uyumAdim(body){
+  const g=body.generationConfig||(body.generationConfig={});
+  let sev=+(localStorage.getItem('evrak_ai_uyum')||0);
+  if(g.thinkingConfig){ delete g.thinkingConfig; sev=Math.max(sev,1); }
+  else if(g.responseMimeType){ delete g.responseMimeType; sev=Math.max(sev,2);
+    try{ const p=body.contents[0].parts.find(x=>x.text); if(p) p.text+='\n\nYANITI YALNIZCA GEÇERLİ JSON OLARAK VER, başka hiçbir şey yazma.'; }catch(e){} }
+  else if(body.systemInstruction){ try{ const st=body.systemInstruction.parts.map(x=>x.text).join('\n'); const p=body.contents[0].parts.find(x=>x.text); if(p) p.text='TALİMAT:\n'+st+'\n\n'+p.text; else body.contents[0].parts.unshift({text:st}); }catch(e){} delete body.systemInstruction; sev=Math.max(sev,3); }
+  else if(g.temperature!=null){ delete g.temperature; sev=Math.max(sev,4); }
+  else { try{ localStorage.setItem('evrak_ai_uyum','0'); }catch(e){} return false; } // biçim sorunu değilmiş: öğrenileni sıfırla
+  try{ localStorage.setItem('evrak_ai_uyum',String(sev)); }catch(e){}
+  return true;
+}
+function uyumUygula(body){
+  const sev=+(localStorage.getItem('evrak_ai_uyum')||0); const g=body.generationConfig||{};
+  if(sev>=1) delete g.thinkingConfig;
+  if(sev>=2 && g.responseMimeType){ delete g.responseMimeType; try{ const p=body.contents[0].parts.find(x=>x.text); if(p) p.text+='\n\nYANITI YALNIZCA GEÇERLİ JSON OLARAK VER, başka hiçbir şey yazma.'; }catch(e){} }
+  if(sev>=3 && body.systemInstruction){ try{ const st=body.systemInstruction.parts.map(x=>x.text).join('\n'); const p=body.contents[0].parts.find(x=>x.text); if(p) p.text='TALİMAT:\n'+st+'\n\n'+p.text; }catch(e){} delete body.systemInstruction; }
+  if(sev>=4) delete g.temperature;
+}
 /* Tek model için üretim (streaming + non-stream + akıllı anahtar sırası) */
 async function _tekModelUret(mdl, parts, opt){
   const {onChunk, body, kota}=opt; let lastErr='';
@@ -864,6 +889,8 @@ async function _tekModelUret(mdl, parts, opt){
           if(r2.status===400 && /responseMimeType|response_mime_type/i.test(tx) && body.generationConfig.responseMimeType){ delete body.generationConfig.responseMimeType; t--; continue; }
           if(r2.status===400 && /thinking/i.test(tx) && body.generationConfig.thinkingConfig){ delete body.generationConfig.thinkingConfig; t--; continue; }
           if(r2.status===429){ kota[key]=(kota[key]||0)+1; }
+          window._sonHamHata=r2.status+' · '+mdl+' · '+String(tx).replace(/\s+/g,' ').slice(0,260);
+          if(r2.status===400 && !/api key|api_key|key not valid|anahtar/i.test(tx) && uyumAdim(body)){ t--; continue; }
           continue; }
         const d=await r2.json();
         const tx=d?.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
@@ -884,6 +911,8 @@ async function generateContent(parts, {onChunk, system, json, temperature}={}){
   const body = { contents:[{role:'user',parts}], generationConfig:{ temperature:(temperature!=null?temperature:0.6), thinkingConfig:{thinkingBudget:0} } };
   if(json) body.generationConfig.responseMimeType='application/json';
   if(system) body.systemInstruction = {parts:[{text:system}]};
+  body.contents[0].parts=parts.map(p=>Object.assign({},p)); // her çağrı kendi kopyası
+  uyumUygula(body);
   const adaylar = modelAdaylari();
   let lastErr='', modelYokSay=0, denenen=0; const kota={};
   for(const mdl of adaylar){
@@ -1361,7 +1390,10 @@ async function evrakAnaliz(){
     '"yarisma":{"ad":"","basvuru_son":"","kategoriler":"","kademe":"","kosullar":""},'+
     '"istenen_ekler":["gönderilmesi istenen ek belgeler (liste, form, onay, fotoğraf vb.)"],'+
     '"onerilen_belgeler":[{"ad":"hazırlanacak belgenin tam adı","aciklama":"ne işe yarar, tek cümle","gorev":"hangi görev adına","gonderilecek_makam":"KİME gidecek (tam makam adı)","gonderen_taraf":"ben | okul | belirsiz"}],'+
-    '"gonderilecek_makam":"yanıtın gideceği makam","gonderen_taraf":"ben | okul | belirsiz","aciliyet":"düşük | orta | yüksek"}\n'+
+    '"gonderilecek_makam":"yanıtın gideceği makam","gonderen_taraf":"ben | okul | belirsiz","aciliyet":"düşük | orta | yüksek",'+
+    '"onem":"kritik | yüksek | normal | düşük","onem_nedeni":"kullanıcı için neden bu kadar önemli, tek cümle",'+
+    '"firsat":"evet | hayır","firsat_nedeni":"tek cümle","uygun_calismalarim":["çalışmalar listesinden"],"firsat_onerisi":"nasıl başvurmalı"}\n'+(window._firsatIstemi||'')+'\n'+
+    '- onem: Kullanıcının BİZZAT yapması gereken bir iş varsa ve son tarih 3 gün içindeyse, ya da adı/görevi/branşı (danışman öğretmen, sorumlu öğretmen, satranç/robotik/yapay zekâ/akıl-zekâ, okul öncesi, özel eğitim) açıkça geçiyorsa, ya da görevlendirme, tebligat, soruşturma, sınav görevi, zorunlu eğitim, veri girişi/form zorunluluğu varsa "kritik" ya da "yüksek" yaz. Yalnızca bilgi amaçlıysa "düşük".\n'+
     'KURALLAR:\n'+
     '- Evrak kullanıcının görevlerinden biriyle (okul öncesi/anaokulu; ilkokul-ortaokul yapay zekâ, robotik, kodlama, satranç, akıl-zekâ oyunları; rehabilitasyon/uzman öğreticilik) ilişkiliyse beni_ilgilendiriyor="evet" ve doğru görevi yaz. Okulun geneline gelen ve kullanıcının destek olacağı işler "kısmen".\n'+
     '- beni_ilgilendiriyor "evet" ya da "kısmen" ise onerilen_belgeler BOŞ KALAMAZ: kullanıcının hazırlayıp gönderebileceği 1-3 somut belge ver (ana yanıt yazısı ilk sırada). Ekip/kurul/komisyon/üye/liste istenirse ilk belge "… Ekibi/Kurulu Oluşturma ve Görevlendirme Onayı (üye listesiyle)" olsun, gonderen_taraf="okul". Yarışmada sırayla: başvuru/katılım yazısı, veli muvafakatnamesi, öğrenci/takım listesi. Bilgi amaçlı yazıda "Tebliğ-Tebellüğ / Bilgi edinildi şerhi" gibi tek belge yeterli.\n'+
@@ -1377,12 +1409,22 @@ async function evrakAnaliz(){
     ['detaylar','yapilacaklar','belgedeki_linkler','belgedeki_epostalar','istenen_ekler','onerilen_belgeler'].forEach(k=>{ if(!Array.isArray(data[k])) data[k]=[]; });
     belgeFallback(data);
     if(!data.yapilacaklar.length) data.yapilacaklar=varsayilanAdimlar(data);
+    onemHesapla(data);
     data._id=takipEkle(data);
+    if(data._kritik){ try{ navigator.vibrate&&navigator.vibrate([180,80,180]); }catch(e){} try{ zilEkle({id:'kr'+data._id,em:'🚨',baslik:'ÇOK ÖNEMLİ: '+(data.konu||'Evrak'),govde:(data.benden_isteniyor||data.ne_isteniyor||'')+(data.son_tarih?' · Son gün '+data.son_tarih:''),hash:'#takip'}); }catch(e){} }
     sonAnaliz=data; PAKET={};
     analizGoster(data);
   }catch(e){
-    sonuc.innerHTML='<div class="panel"><p style="color:var(--err);margin:0 0 8px">⚠️ '+esc(e.kullanici||'Çözümlenemedi — evrak net okunamamış olabilir.')+'</p><div class="btnrow" style="margin-top:4px"><button class="btn pri sm" onclick="evrakAnaliz()">🔄 Tekrar dene</button></div><p class="note">İpucu: Fotoğraf bulanıksa yeniden çek ya da evrak metnini kutuya yapıştır.</p></div>';
+    sonuc.innerHTML='<div class="panel"><p style="color:var(--err);margin:0 0 8px">⚠️ '+esc(e.kullanici||'Çözümlenemedi — evrak net okunamamış olabilir.')+'</p><div class="btnrow" style="margin-top:4px"><button class="btn pri sm" onclick="evrakAnaliz()">🔄 Tekrar dene</button><button class="btn gh sm" onclick="kasaTestHizli()">🩺 Kasayı test et</button></div>'+(window._sonHamHata?'<details class="note"><summary>🔧 Ayrıntı (sorun sürerse ekran görüntüsünü bana gönder)</summary><code style="word-break:break-all">'+esc(window._sonHamHata)+'</code></details>':'')+'<p class="note">İpucu: Fotoğraf bulanıksa yeniden çek ya da evrak metnini kutuya yapıştır.</p></div>';
   }finally{ spinDur(); window._analizSuruyor=false; if(btn) btn.disabled=false; }
+}
+function onemHesapla(d){
+  const ilg=String(d.beni_ilgilendiriyor||'').toLowerCase(); const ilgili=/evet|kısmen|kismen/.test(ilg);
+  const o=String(d.onem||'').toLowerCase(); const kg=kalanGun(tarihCoz(d.son_tarih));
+  const k=kurumGet(); const ad=(k.ad||'').trim(); const ham=JSON.stringify(d).toLocaleLowerCase('tr-TR');
+  const adGecti=ad && ad.length>3 && ham.indexOf(ad.toLocaleLowerCase('tr-TR'))>=0;
+  d._kritik = ilgili && (/kritik|yüksek|yuksek/.test(o) || (kg!=null && kg>=0 && kg<=3 && ilg==='evet') || adGecti || /görevlendir|tebli|soruşturma|sınav görev/.test(ham)) || (o==='kritik');
+  return d._kritik;
 }
 function varsayilanAdimlar(d){
   const a=[]; const taraf=d.gonderen_taraf;
@@ -1425,6 +1467,16 @@ function analizGoster(d){
   const ilgili=(ilg==='evet'||ilg==='kısmen'||ilg==='kismen');
   let h='';
 
+  // 0) ÇOK ÖNEMLİ bandı
+  if(d._kritik===undefined) onemHesapla(d);
+  if(d._kritik){
+    h+='<div class="panel kritikBant" role="alert"><div style="font-size:13px;font-weight:900;letter-spacing:1px;opacity:.9">🚨 ÇOK ÖNEMLİ — SENİ DOĞRUDAN İLGİLENDİRİYOR</div>'+
+      '<div style="font-size:19px;font-weight:900;margin:6px 0 4px">'+esc(d.benden_isteniyor||d.ne_isteniyor||d.konu||'')+'</div>'+
+      (d.son_tarih?('<div style="font-size:16px;font-weight:800">⏰ Son gün: '+esc(d.son_tarih)+(kg!=null?' · '+kalanEtiket(kg):'')+'</div>'):'')+
+      (d.onem_nedeni?('<div style="font-size:13.5px;margin-top:6px;opacity:.95">'+esc(d.onem_nedeni)+'</div>'):'')+
+      ((d.belgedeki_linkler||[]).map(l=>guvenliUrl(l&&l.url)).filter(Boolean).slice(0,1).map(u=>'<a class="btn" style="background:#fff;color:#991b1b;text-decoration:none;margin-top:10px;min-height:48px" href="'+esc(u)+'" target="_blank" rel="noopener">👉 Hemen aç: '+esc((d.belgedeki_linkler[0].ad||u.replace(/^https?:\/\//,'')).slice(0,40))+'</a>').join(''))+
+      '</div>';
+  }
   // 1) İlgi bandı
   if(ilgili){
     const evet=(ilg==='evet');
@@ -1473,7 +1525,7 @@ function analizGoster(d){
   sonuc.innerHTML=h;
 
   // OTOMATİK: ilgiliyse paketi kur; ilk belge editörde açılır, diğerleri arka planda hazırlanır
-  if(ilgili && d.onerilen_belgeler.length && !d._otoYapildi){ d._otoYapildi=true; paketBaslat(); }
+  if(ilgili && d.onerilen_belgeler.length && !d._otoYapildi){ d._otoYapildi=true; if(d._kritik){ setTimeout(()=>{ const b=document.querySelector('.kritikBant'); if(b) b.scrollIntoView({behavior:'smooth'}); },150); } else paketBaslat(); }
 }
 function adimlarHTML(d){
   const k=d._id?takipGet().find(x=>x.id===d._id):null;
@@ -1968,7 +2020,7 @@ function resmiRender(md){
     const t=temiz(ln);
     if(!t){ return ln; }
     if(/^(sayı|sayi|konu|ilgi)\s*:/i.test(t)) ustBitti=true;
-    if(!ustBitti && i<8 && (/^t\.?\s?c\.?$/i.test(t) || (t===t.toLocaleUpperCase('tr-TR') && t.length<80 && /[A-ZÇĞİÖŞÜ]/.test(t)))) return '⟦C⟧'+t;
+    if(!ustBitti && i<8 && (/^t\.?\s?c\.?$/i.test(t) || (/(müdürlüğü|kaymakamlığı|valiliği|başkanlığı)$/i.test(t) && t.length<70) || (t===t.toLocaleUpperCase('tr-TR') && t.length<80 && /[A-ZÇĞİÖŞÜ]/.test(t)))) return '⟦C⟧'+t;
     if(/(MÜDÜRLÜĞÜNE|BAŞKANLIĞINA|MAKAMINA|VALİLİĞİNE|KAYMAKAMLIĞINA|DEKANLIĞINA|REKTÖRLÜĞÜNE|MÜDÜRLÜĞÜ'NE)\s*$/i.test(t) && t.length<110){ ustBitti=true; return '⟦H⟧'+t; }
     if(/(arz ederim|rica ederim|arz ve rica ederim|olur'?larınıza arz ederim)\.?\s*$/i.test(t)){ imzaModu=true; return ln; }
     if(imzaModu){
@@ -2146,8 +2198,9 @@ function takipCiz(){
     const renk=x.durum==='tamam'?'#16a34a':(kg==null?'#64748b':kg<0?'#991b1b':kg<=2?'#dc2626':kg<=7?'#d97706':'#2a6f6b');
     const bitti=x.adimlar.filter(z=>z.ok).length, top=x.adimlar.length;
     const yuzde=top?Math.round(bitti*100/top):(x.durum==='tamam'?100:0);
-    return '<div class="tkart" style="border-left-color:'+renk+'">'+
-      '<div class="tust"><b>'+esc(x.konu)+'</b>'+(x.son_tarih?'<span class="tgun" style="background:'+renk+'">'+(x.durum==='tamam'?'✅ Tamam':kalanEtiket(kg))+'</span>':'')+'</div>'+
+    const kr=x.analiz&&x.analiz._kritik&&x.durum!=='tamam';
+    return '<div class="tkart'+(kr?' kritik':'')+'" style="border-left-color:'+renk+'">'+
+      '<div class="tust"><b>'+(kr?'🚨 ':'')+esc(x.konu)+'</b>'+(x.son_tarih?'<span class="tgun" style="background:'+renk+'">'+(x.durum==='tamam'?'✅ Tamam':kalanEtiket(kg))+'</span>':'')+'</div>'+
       '<div class="talt">'+[x.gonderen,x.sayi,x.son_tarih&&('Son gün: '+x.son_tarih)].filter(Boolean).map(esc).join(' · ')+'</div>'+
       '<div class="tbar"><i style="width:'+yuzde+'%;background:'+renk+'"></i></div><div class="talt">'+bitti+'/'+top+' adım tamam</div>'+
       '<div class="btnrow" style="margin-top:8px">'+
@@ -2428,7 +2481,7 @@ async function pwaYukle(){
 }
 
 /* ============ SÜRÜM ROZETİ + ÖZ-KONTROL ============ */
-const APP={surum:'6.1',tarih:'27.10.2026',satir:3540,kb:460,onceki:{surum:'6.0',satir:3505,kb:457},
+const APP={surum:'6.3',tarih:'28.10.2026',satir:3788,kb:487,onceki:{surum:'6.2',satir:3598,kb:467},
   yenilikler:['📡 Etkinlik Radarı (Beylikdüzü öncelikli satranç, akıl-zekâ, robotik, yapay zekâ, proje)','🔔 Telefona bildirim + otomatik hatırlatmalar (baris-kasa)','🛡️ Gönderim öncesi resmî yazı kontrolü','📱 Yeni simge, açılış ekranı, alt menü, sade ekran','🔐 Yapay zekâ anahtarları kasada; teknik hata kodu yok']};
 const MODULLER=['generateContent','radarCiz','modelKesfet','anahtarSirala','evrakAnaliz','analizGoster','paketBaslat','belgeUret','taslakUret','aiTakip','gerekenlerCiz','kadroListe','resmiRender','resmiPdf','resmiWord','gonderModalAc','takipCiz','icsIndir','tarihCoz','arsivCiz','initPWA','surumKontrol'];
 function modulKontrol(){ return MODULLER.map(f=>({f,ok:typeof window[f]==='function'})); }
@@ -2504,8 +2557,12 @@ init();
    v6 — BARIŞ KASA · BİLDİRİM · ETKİNLİK RADARI · GERÇEK UYGULAMA
    Kasa: baris-kasa · uyg: evrak
    ============================================================ */
-const SURUM=6.1;
+const SURUM=6.3;
 const YENILIKLER=[
+  '📲 Müdüre tek dokunuş: selam mesajı + müdür imzalı resmî yazı (PDF/Word) hazır, WhatsApp\'ta onun sohbeti açılır',
+  '🌟 Fırsat bandı: çalışmalarını gösterebileceğin çağrılar sarı bantla öne çıkar; başvuru metnin tek dokunuşla hazır',
+  '🚨 Seni doğrudan ilgilendiren önemli evrak kırmızı "ÇOK ÖNEMLİ" bandıyla en üstte; son gün ve link tek dokunuşta',
+  '🛠️ "İstek biçimi hatalı" sorunu giderildi: yapay zekâ isteği reddederse istek kendiliğinden sadeleştirilip yeniden denenir',
   '⚡ Evrak çözümleme çok daha hızlı: fotoğraf yüklemeden önce küçültülür, hiçbir istek 1 dakikadan uzun beklemez, geçen süre ekranda görünür',
   '📡 Etkinlik Radarı: Beylikdüzü öncelikli satranç, akıl-zekâ, robotik-kodlama, yapay zekâ ve proje yarışmaları tek listede',
   '🔔 Telefona bildirim: yaklaşan turnuva, son kayıt ve evrak son günleri kendiliğinden hatırlatılır; okunan bildirim silinir',
@@ -2673,6 +2730,7 @@ const KATEGORI={
   robotik:{ad:'Robotik-Kodlama',em:'🤖',renk:'#3b5bdb'},
   yapayzeka:{ad:'Yapay Zekâ',em:'🧠',renk:'#7c3aed'},
   proje:{ad:'Proje / Bilim',em:'🔬',renk:'#c9a24b'},
+  firsat:{ad:'Bana fırsat',em:'🌟',renk:'#d97706'},
   diger:{ad:'Diğer',em:'📌',renk:'#64748b'}
 };
 const KONTROL={
@@ -2682,9 +2740,10 @@ const KONTROL={
   robotik:['Şartnameyi oku (kategori, yaş, takım sayısı, son tarihler)','Takımı ve danışman öğretmeni belirle','Başvuru platformunda takım kaydını yap','Rapor / video teslim tarihlerini takvime ekle','Veli muvafakat ve okul onayını al'],
   yapayzeka:['Şartnameyi oku (kategori, yaş, teslim biçimi)','Takımı ve danışman öğretmeni belirle','Başvuru platformunda kaydı yap','Proje raporu / sunum teslim tarihlerini takvime ekle','Veli muvafakat ve okul onayını al'],
   proje:['Çağrı metnini ve takvimi oku','Öğrencileri ve danışman rolünü belirle','Öğretmen ve öğrenci sistem kayıtlarını (ARBİS vb.) güncelle','Proje raporunu yazım kurallarına göre hazırla','Gerekiyorsa veli onay / izin formlarını topla','Başvuruyu son gün mesai bitiminden önce yap'],
+  firsat:['Çağrı / şartnameyi oku (kimler başvurabilir, son gün)','Hangi çalışmanla başvuracağını seç','Başvuru / tanıtım metnini hazırla (✍️ ile)','Ekran görüntüsü, video ve kullanım kanıtlarını topla','Okul müdürüne bilgi ver / onay al','Son günden önce başvur'],
   diger:['Duyuruyu/yönergeyi oku','Katılacakları belirle','Veli izin belgesini al','Okul onayını / görevlendirmeyi al']
 };
-const RADAR_TOHUM_SURUM=1;
+const RADAR_TOHUM_SURUM=2;
 const RADAR_TOHUM=[
   {id:'t-ilce-satranc-bd',kategori:'satranc',tip:'okulsporlari',baslik:'2026-2027 İstanbul İlçe Okul Sporları Satranç Turnuvası — Beylikdüzü',ilce:'Beylikdüzü',il:'İstanbul',tarih:'2026-11-02',bitis:'2026-11-03',kademe:'İlkokul · Ortaokul · Lise — takım: 4 asıl + 2 yedek',ozet:'İlçe GSİM, İlçe MEM ve TSF ilçe temsilciliği birlikte düzenler. Duyuruya göre tüm sporcuların 2. küme okul sporları lisansı olmalı; okullar Spor Bilgi Sistemi\'nden alınan esame listesi ve lisanslarla kayıt kontrol masasına gelir. İlçe turnuvasına katılan sporcu il / Türkiye okul sporları turnuvalarına katılamaz.',link:'https://www.istanbul.tsf.org.tr/turnuva-haberleri/gencler-satranc/5320-2026-2027istanbul-ilce-okul-sporlar-satranc-turnuvalari',kaynak:'TSF İstanbul',hatirlat:true},
   {id:'t-bd-belediye-29ekim',kategori:'satranc',tip:'satranc',baslik:'Beylikdüzü Belediyesi Cumhuriyet Bayramı ve Ata\'ya Saygı Satranç Turnuvası',ilce:'Beylikdüzü',il:'İstanbul',tarih:'2026-10-31',bitis:'2026-11-01',yer:'Beylikdüzü Atatürk Kültür ve Sanat Merkezi',kademe:'Her yaş · 6 kategori · kategori başına 64 kişi',ozet:'UKD turnuvası: 6 tur, 35 dk + 30 sn. Her kategoride ilk 3\'e kupa; toplam 61.500 TL nakdi ödül. Online kayıt 19 Ekim 20:00\'de açıldı, kontenjan sınırlı.',link:'https://www.istanbul.tsf.org.tr/turnuva-haberleri/acik-satranc-turnuvasi/5314-beylikduzu-belediyesi-cumhuriyet-bayram-ve-ataya-sayg-satranc-turnuvas2026',kayit:'https://www.istanbul.tsf.org.tr/turnuva-kayit-sistemi/beylikduezue-belediyesi-turnuvasekim2026',yonerge:'https://www.istanbul.tsf.org.tr/images/turnuvalar/2027/29ekim/beylikduzu2026_yonerge.pdf',kaynak:'TSF İstanbul',hatirlat:true},
@@ -2696,6 +2755,7 @@ const RADAR_TOHUM=[
   {id:'t-okul-bolge-2027',kategori:'satranc',tip:'okulsporlari',baslik:'2026-2027 İstanbul Okul Sporları Satranç Bölge Turnuvaları',ilce:'',il:'İstanbul',tarih:'',donem:'Ocak – Şubat 2027',ozet:'İl birinciliğine giden yol. Kesin günler duyurulunca radar taraması yakalar. Not: ilçe turnuvasına katılan sporcu bu turnuvalara katılamaz — takımlarını buna göre planla.',link:'https://www.istanbul.tsf.org.tr/turnuva-haberleri/gencler-satranc/5321-2026-2027-istanbul-okul-sporlar-bolge-turnuvalar-baslyor',kaynak:'TSF İstanbul'},
   {id:'t-tubitak-4006',kategori:'proje',tip:'proje',baslik:'TÜBİTAK 4006 Bilim Fuarı (13. dönem) — son başvuru',ilce:'',il:'Türkiye geneli',son_kayit:'2026-11-13',ozet:'5–12. sınıf öğrencilerinin tematik bilim projeleriyle okulda fuar. Son başvuru 13 Kasım 2026 saat 17:30. Robotik, kodlama ve yapay zekâ projeleri için okulunda fuar açmanın en kolay yolu.',link:'https://www.alomaliye.com/2026/09/23/tubitaktan-bilim-projeleri-icin-iki-cagri/',kaynak:'TÜBİTAK duyurusu (haber)',hatirlat:true},
   {id:'t-tubitak-2204b',kategori:'proje',tip:'proje',baslik:'TÜBİTAK 2204-B Ortaokul Öğrencileri Araştırma Projeleri (21.) — 2027 çağrısı',ilce:'',il:'Türkiye geneli',tarih:'',donem:'2026-2027 dönemi',kademe:'5–8. sınıf · projede en fazla 3 öğrenci · danışman öğretmen zorunlu',ozet:'Çağrı 25 Eylül 2026\'da yayımlandı. Alanlar arasında Yazılım ve Teknolojik Tasarım var (robotik / yapay zekâ projeleri buraya). Son başvuru günü çağrı sayfasındaki takvimde — tarihi öğrenince ✏️ ile ekle, hatırlatayım.',link:'https://tubitak.gov.tr/tr/duyuru/2204-lise-ogrencileri-arastirma-projeleri-yarismasi-ve-2204-b-ortaokul-ogrencileri-arastirma-projeleri-yarismasi-2027-yili-cagrilari-yayinlandi',kaynak:'TÜBİTAK'},
+  {id:'t-kristal-mesale-2026',kategori:'firsat',tip:'firsat',baslik:'EBA Kristal Meşale 2026 — sonuç ilanı (iki başvurun)',ilce:'',il:'Türkiye geneli',tarih:'2026-11-06',ozet:'"Eğitimde Teknoloji Liderliği" ve "Özel Eğitimde Yenilikçi Yaklaşımlar (Otizm)" başvurularının sonuçları. Ödül çıkarsa okul web haberi ve ilçe MEM bilgi yazısını 📦 ile hazırlarım.',kaynak:'Başvurun',hatirlat:true},
   {id:'t-teknofest-2027',kategori:'robotik',tip:'robotik',baslik:'TEKNOFEST 2027 Teknoloji Yarışmaları — başvuru takvimi',ilce:'',il:'Türkiye geneli',tarih:'',donem:'Takvim duyurulunca',ozet:'Robotik, yapay zekâ ve eğitim teknolojileri kategorileri. Önceki yıllarda başvurular kışın açılıp şubat sonunda kapandı; açıldığında radar taraması yakalar.',link:'https://www.teknofest.org/tr/yarismalar/',kaynak:'TEKNOFEST'}
 ];
 const RADAR_KAYNAK=[
@@ -2741,7 +2801,7 @@ function radarCiz(){
   let a=radarGet();
   const yerSay={bd:a.filter(x=>radarBD(x)&&!radarBitti(x)).length};
   a=a.filter(x=>_rKat==='hepsi'||x.kategori===_rKat);
-  a=a.filter(x=>_rYer==='hepsi'?true:_rYer==='bd'?radarBD(x):_rYer==='ist'?radarIst(x):true);
+  a=a.filter(x=>(_rYer==='hepsi'||_rKat==='firsat')?true:_rYer==='bd'?radarBD(x):_rYer==='ist'?radarIst(x):true);
   const aktif=a.filter(x=>!radarBitti(x)), gecmis=a.filter(x=>radarBitti(x));
   aktif.sort((x,y)=>{ const dx=isoTarih(radarAnaTarih(x)), dy=isoTarih(radarAnaTarih(y)); if(dx&&dy) return dx-dy; if(dx) return -1; if(dy) return 1; return (y.eklenme||0)-(x.eklenme||0); });
   gecmis.sort((x,y)=>(isoTarih(radarAnaTarih(y))||0)-(isoTarih(radarAnaTarih(x))||0));
@@ -2925,7 +2985,7 @@ function aiKalemTemizle(o){
   if(!o||typeof o!=='object') return null;
   const tarihOk=s=>/^\d{4}-\d{2}-\d{2}$/.test(String(s||''))?String(s):'';
   const kat=String(o.kategori||'').toLowerCase();
-  const k=/satran/.test(kat)?'satranc':/akil|akıl|zek/.test(kat)?'akil':/robot|kod/.test(kat)?'robotik':/yapay|ai/.test(kat)?'yapayzeka':/proje|bilim|tubitak|tübitak/.test(kat)?'proje':'diger';
+  const k=/firsat|fırsat|ogretmen|öğretmen|odul|ödül/.test(kat)?'firsat':/satran/.test(kat)?'satranc':/akil|akıl|zek/.test(kat)?'akil':/robot|kod/.test(kat)?'robotik':/yapay|ai/.test(kat)?'yapayzeka':/proje|bilim|tubitak|tübitak/.test(kat)?'proje':'diger';
   const x={baslik:String(o.baslik||o.ad||'').trim().slice(0,160),kategori:k,tip:/okul\s*spor/i.test(String(o.baslik||'')+String(o.ozet||''))?'okulsporlari':k,
     ilce:String(o.ilce||'').trim(),il:String(o.il||'').trim(),tarih:tarihOk(o.tarih),bitis:tarihOk(o.bitis),son_kayit:tarihOk(o.son_kayit),
     yer:String(o.yer||'').trim().slice(0,140),kademe:String(o.kademe||'').trim().slice(0,140),ozet:String(o.ozet||'').trim().slice(0,400),
@@ -2945,8 +3005,9 @@ async function radarTara(sessiz){
   const istem='Bugün '+trTarih(isoYap(bugun))+'. Google araması yaparak '+trTarih(isoYap(bugun),false)+' ile '+trTarih(isoYap(bitis),false)+' arasında yapılacak ya da başvurusu süren, öğrencilerin (anaokulu–lise) katılabileceği GERÇEK etkinlikleri bul:\n'+
     '1) ÖNCELİK: İstanbul Beylikdüzü ilçesi (Beylikdüzü İlçe MEM, Beylikdüzü Belediyesi, Beylikdüzü\'ndeki okullar, TSF İstanbul duyuruları).\n2) İstanbul geneli.\n3) Türkiye geneli başvurular (TÜBİTAK 2204-B, 4006, TEKNOFEST, MEB yarışmaları, FIRST LEGO League, ulusal akıl ve zekâ oyunları turnuvaları).\n'+
     'Konular: satranç turnuvaları, akıl ve zekâ oyunları turnuvaları, robotik ve kodlama yarışmaları, yapay zekâ proje yarışmaları, bilim/proje fuarları.\n'+
+    '4) ÖĞRETMEN FIRSATLARI (kategori "firsat"): öğretmenlerin kendi eğitim teknolojisi, yapay zekâ, robotik-kodlama, dijital materyal, özel eğitim veya okul öncesi çalışmalarını sunabileceği yarışma, ödül, iyi örnek, sergi, konferans ve proje çağrıları (MEB, YEĞİTEK, EBA, TÜBİTAK, İstanbul İl MEM, Beylikdüzü İlçe MEM, eTwinning, öğretmen ödülleri).\n'+
     'YALNIZCA şu biçimde geçerli bir JSON DİZİSİ döndür, başka hiçbir şey yazma:\n'+
-    '[{"baslik":"","kategori":"satranc|akil|robotik|yapayzeka|proje","ilce":"","il":"","tarih":"YYYY-MM-DD (etkinlik başlangıcı, bilinmiyorsa boş)","bitis":"YYYY-MM-DD ya da boş","son_kayit":"YYYY-MM-DD ya da boş","yer":"","kademe":"kimler katılabilir","ozet":"tek-iki cümle","link":"duyurunun TAM adresi","kayit":"kayıt adresi ya da boş","kaynak":"site adı"}]\n'+
+    '[{"baslik":"","kategori":"satranc|akil|robotik|yapayzeka|proje|firsat","ilce":"","il":"","tarih":"YYYY-MM-DD (etkinlik başlangıcı, bilinmiyorsa boş)","bitis":"YYYY-MM-DD ya da boş","son_kayit":"YYYY-MM-DD ya da boş","yer":"","kademe":"kimler katılabilir","ozet":"tek-iki cümle","link":"duyurunun TAM adresi","kayit":"kayıt adresi ya da boş","kaynak":"site adı"}]\n'+
     'KURALLAR: Tarih ve linkleri UYDURMA; kaynakta yazmıyorsa boş bırak. Geçmiş etkinlikleri verme. En fazla 15 kayıt. Beylikdüzü olanlar önce.';
   let yeniler=[];
   try{
@@ -3376,7 +3437,7 @@ function yeniliklerGoster(zorla){
   if(!zorla && gor===String(SURUM)) return;
   if(!zorla && (_ilkKez || document.querySelector('.overlay.on'))){ lsYaz('evrak_yenilik_goruldu',String(SURUM)); return; } // ilk kez açan kişiye karşılama yeter
   lsYaz('evrak_yenilik_goruldu',String(SURUM));
-  modal6('🆕 Yeni neler var? · v'+SURUM.toFixed(1),'<ul style="padding-left:1.1em;line-height:1.8">'+YENILIKLER.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>'+
+  modal6('🆕 Yeni neler var? · v'+SURUM.toFixed(1),'<ul style="padding-left:1.1em;line-height:1.8">'+YENILIKLER.slice(0,4).map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>'+
     '<div class="btnrow"><button class="btn pri" onclick="hosKapat();hashGit(\'#radar\')">📡 Radara bak</button><button class="btn gh" onclick="hosKapat();hashGit(\'#bildirim\')">🔔 Bildirimleri aç</button></div>');
 }
 function yaziyorMu(){ const a=document.activeElement; if(a && (a.tagName==='TEXTAREA'||(a.tagName==='INPUT'&&!/checkbox|radio|button|file/.test(a.type)))) return true; if(document.querySelector('.overlay.on')) return true; if(window._analizSuruyor||_taramaSuruyor) return true; return false; }
@@ -3397,10 +3458,16 @@ async function surumDenetle(elle){
 function surumKontrol(elle){ return surumDenetle(elle); }
 function surumYenile(){ location.replace(sayfaUrl('')+'?v='+Date.now()+location.hash); }
 
+async function kasaTestHizli(){
+  toast('🩺 Kasa deneniyor…');
+  try{ const r=await fetch(kasaUrl()+'/g/v1beta/models/gemini-2.5-flash:generateContent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Sadece tamam yaz.'}]}]})});
+    const t=await r.text(); if(r.ok){ toast('🟢 Kasa ve yapay zekâ çalışıyor — 🔄 Tekrar dene'); localStorage.setItem('evrak_ai_uyum','2'); } else { window._sonHamHata='test '+r.status+' · '+t.replace(/\s+/g,' ').slice(0,260); toast('🔴 Kasa yanıtı: '+r.status+' — Ayrıntı kutusunda'); } }
+  catch(e){ toast('🔴 Kasaya ulaşılamadı — internetini kontrol et'); }
+}
 /* ---------- Gönderim öncesi resmî yazı kontrolü ---------- */
 function resmiKontrol(md){
   const t=String(md||''); const d=ZIRVE.duzMetin(t); const sonuc=[];
-  const kalan=(t.match(/\[[^\]\n]{2,50}\]/g)||[]).filter((v,i,a)=>a.indexOf(v)===i);
+  const kalan=(t.match(/\[[^\]\n]{2,50}\]/g)||[]).filter((v,i,a)=>a.indexOf(v)===i).filter(v=>!/^\[(\.\.\.|…|sayı|sayi)\]$/i.test(v)); // Sayıyı DYS verir
   sonuc.push(kalan.length?{ok:false,m:'Doldurulmamış '+kalan.length+' alan var: '+kalan.slice(0,6).join(' ')+(kalan.length>6?' …':'')}:{ok:true,m:'Boş [yer tutucu] kalmamış'});
   const resmiYazi=/T\.?\s?C\.?/.test(d) || /(MÜDÜRLÜĞÜNE|BAŞKANLIĞINA|KAYMAKAMLIĞINA|VALİLİĞİNE)/.test(d);
   if(resmiYazi){
@@ -3526,6 +3593,187 @@ window.addEventListener('pageshow',oneGeldi);
     window._appHazir=true;
   }catch(e){ console.error(e); }
 })();
+</script>
+<script id="v63-firsat-mudur">
+/* ============================================================
+   v6.3 — 🌟 FIRSAT (çalışmalarını görünür kıl) · 📲 MÜDÜRE TEK DOKUNUŞLA GÖNDER
+   ============================================================ */
+const CALISMA_VARSAYILAN=[
+  'Robotçular / Minik Robotçular — anaokulundan 7. sınıfa sınıf sınıf robotik-kodlama platform serisi',
+  'RoboŞehir — tablet + akıllı tahta ile robot tasarım ve kodlama atölyesi (fiziksel robot olmadan)',
+  'Canlı Robot — fiziksel robota telefonla dokununca akıllı tahtadaki robot canlanıyor',
+  'ZİRVE Ders Merkezi — okul derslerini blok kodlamayla öğrenme platformu',
+  'Okuma Saati — ses temelli ilk okuma-yazma platformu',
+  'Zihin Köprüsü — veliler için dikkat ve hafıza oyun paketi',
+  'MatAkış — görsel, animasyonlu ve oyunlaştırılmış matematik',
+  'LGS Zafer Sistemi — çok öğrencili LGS hazırlık ve deneme takip platformu',
+  'Değişim Koleji MEGA — çok rollü yapay zekâ destekli okul ekosistemi',
+  'Eğitsel 3D oyunlar — Yıldız Arena, KüpVerse, Robi\'nin Adası ve diğerleri',
+  'Resmi Evrak & Yarışma Asistanı — öğretmenler için yapay zekâlı resmî yazışma asistanı',
+  '11 yıl özel eğitim uzman öğreticiliği; DIR Floortime temelli otizm çalışmaları'
+];
+function calismalarim(){ const k=kurumGet(); const t=(k.calismalar!=null?String(k.calismalar):CALISMA_VARSAYILAN.join('\n')); return t.split('\n').map(x=>x.trim()).filter(Boolean); }
+function mudurAd(){ return (kurumGet().mudur||'Mehmet Emin Ateş').trim(); }
+function mudurTel(){ return String(kurumGet().mudurTel||'').replace(/\D/g,''); }
+function waNumara(t){ t=String(t||'').replace(/\D/g,''); if(!t) return ''; if(t.startsWith('00')) t=t.slice(2); if(t.startsWith('0')) t='90'+t.slice(1); if(t.length===10 && t[0]==='5') t='90'+t; return t; }
+function hitapAd(ad){ const p=String(ad||'').trim().split(/\s+/); return p.length>1?p.slice(0,-1).join(' '):p[0]||''; }
+
+/* --- Profil: Çalışmalarım + Müdür WhatsApp --- */
+(function(){
+  const mud=document.getElementById('kMudur');
+  if(mud && !document.getElementById('kMudurTel')){
+    mud.insertAdjacentHTML('afterend','<label class="fl">Müdürün WhatsApp numarası <span class="note" style="font-weight:400">(belgeyi tek dokunuşla ona göndermek için)</span></label><input id="kMudurTel" type="tel" inputmode="tel" placeholder="05xx xxx xx xx">');
+  }
+  const kd=document.getElementById('kKadro');
+  if(kd && !document.getElementById('kCalisma')){
+    kd.insertAdjacentHTML('afterend','<label class="fl">🌟 Çalışmalarım <span class="note" style="font-weight:400">(her satıra bir çalışma — fırsat gelince bunları öne çıkarırım)</span></label><textarea id="kCalisma" style="min-height:150px"></textarea>');
+  }
+})();
+const _eskiKurumAyarAc=kurumAyarAc;
+window.kurumAyarAc=function(){ _eskiKurumAyarAc(); const k=kurumGet(); const t=document.getElementById('kMudurTel'); if(t) t.value=k.mudurTel||''; const c=document.getElementById('kCalisma'); if(c) c.value=calismalarim().join('\n'); };
+const _eskiKurumKaydet=kurumKaydet;
+window.kurumKaydet=function(){
+  const tel=(document.getElementById('kMudurTel')||{}).value||''; const cal=(document.getElementById('kCalisma')||{}).value;
+  _eskiKurumKaydet();
+  const k=kurumGet(); k.mudurTel=tel.trim(); if(cal!=null) k.calismalar=String(cal).trim(); localStorage.setItem(LS.kurum,JSON.stringify(k));
+};
+const _eskiKurumMetni=kurumMetni;
+window.kurumMetni=function(){
+  const c=calismalarim();
+  return _eskiKurumMetni()+(c.length?('\nKULLANICININ KENDİ ÇALIŞMALARI (yalnızca konuyla gerçekten ilgiliyse an; belge türüne uymuyorsa kullanma):\n'+c.map(x=>'  - '+x).join('\n')):'');
+};
+
+/* --- Çözümleme şemasına FIRSAT alanları --- */
+window._firsatIstemi='\n- FIRSAT: Evrak; öğretmenlerin kendi projelerini, dijital materyallerini, yapay zekâ / robotik / kodlama / özel eğitim çalışmalarını, iyi uygulamalarını sunabileceği, ödül alabileceği, sergileyebileceği ya da tanınırlık kazanabileceği bir yarışma, çağrı, proje, sergi, konferans, iyi örnek derlemesi, danışmanlık, eğitici eğitimi veya görevlendirme ise firsat="evet" yaz. Kullanıcının ÇALIŞMALARI listesinden en uygun 1-3 tanesini uygun_calismalarim\'a AYNEN yaz, firsat_onerisi\'ne nasıl başvuracağını tek-iki cümleyle yaz. Böyle değilse firsat="hayır".';
+
+function firsatBantHTML(d){
+  if(!d || !/evet/i.test(String(d.firsat||''))) return '';
+  const uy=(Array.isArray(d.uygun_calismalarim)?d.uygun_calismalarim:[]).filter(Boolean).slice(0,3);
+  return '<div class="panel firsatBant" role="note"><div style="font-size:13px;font-weight:900;letter-spacing:1px">🌟 ÇALIŞMALARINI GÖSTERMEK İÇİN FIRSAT</div>'+
+    (d.firsat_nedeni?('<div style="font-size:16px;font-weight:800;margin:6px 0">'+esc(d.firsat_nedeni)+'</div>'):'')+
+    (uy.length?('<div style="font-size:13.5px;margin:4px 0"><b>Öne çıkarabileceğin çalışmaların:</b><ul style="margin:4px 0 0;padding-left:1.2em">'+uy.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul></div>'):'')+
+    (d.firsat_onerisi?('<div style="font-size:13.5px;margin-top:6px">👉 '+esc(d.firsat_onerisi)+'</div>'):'')+
+    '<div class="btnrow" style="margin-top:10px"><button class="btn" style="background:#152238;color:#fff" onclick="firsatBasvuru()">✍️ Başvuru / tanıtım metnimi hazırla</button></div></div>';
+}
+function firsatBasvuru(){
+  const d=sonAnaliz; if(!d) return;
+  const uy=(d.uygun_calismalarim||[]).join('; ');
+  belgeUret('Başvuru ve Tanıtım Metni — '+(d.konu||'Proje'),
+    'Gelen çağrıya kullanıcının KENDİ çalışmalarıyla başvurması için eksiksiz bir BAŞVURU / PROJE TANITIM METNİ hazırla: proje adı, amaç, yenilikçi yönü (Türkiye\'de özgün olduğu noktalar — abartmadan, kanıtlanabilir ifadelerle), hedef kitle, uygulama süreci, ölçülebilir kazanımlar, yaygınlaştırma ve okul adına kısa üst yazı önerisi. Öne çıkacak çalışmalar: '+(uy||'kullanıcının çalışmalar listesinden en uygunları')+'. Bilinmeyen sayı/oranları uydurma, [ ] ile bırak.',
+    'GELEN ÇAĞRI: '+[d.konu,d.gonderen_makam,d.ne_isteniyor,d.son_tarih&&('Son tarih: '+d.son_tarih),(d.detaylar||[]).join('; ')].filter(Boolean).join(' · '),
+    {gonderenTaraf:'ben'});
+}
+
+/* --- analizGoster: fırsat bandı + müdüre gönder düğmesi --- */
+const _eskiAnalizGoster=analizGoster;
+window.analizGoster=function(d){
+  _eskiAnalizGoster(d);
+  try{
+    const s=document.getElementById('analizSonuc'); if(!s) return;
+    const fb=firsatBantHTML(d);
+    const ust=s.querySelector('.kritikBant');
+    const kutu=document.createElement('div');
+    kutu.innerHTML=fb+'<div class="panel mudurPanel"><div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><div style="flex:1;min-width:200px"><b style="color:var(--ink);font-size:15.5px">📲 '+esc(mudurAd())+' Bey\'e hazır gönder</b><div class="note" style="margin:2px 0 0">Selam mesajı + gerekiyorsa müdür imzalı resmî yazı (PDF/Word) hazırlanır. Sen yalnızca WhatsApp\'ta "gönder"e basarsın; o da DYS\'den imzalayıp gönderir.</div></div>'+
+      '<button class="btn pri" style="min-height:52px" onclick="mudurPaketi()">🟢 Hepsini hazırla</button></div></div>';
+    if(ust) ust.after(kutu); else s.prepend(kutu);
+    if(fb && !d._firsatZil){ d._firsatZil=true; try{ zilEkle({id:'fr'+(d._id||Date.now()),em:'🌟',baslik:'Fırsat: '+(d.konu||'Yeni çağrı'),govde:d.firsat_nedeni||'Çalışmalarını gösterebilirsin',hash:'#takip'}); }catch(e){} }
+  }catch(e){}
+};
+
+/* --- Resmî PDF'i dosya olarak üret (paylaşmak için) --- */
+async function resmiPdfBlob(md,baslik){
+  await lazyScript('https://cdn.jsdelivr.net/npm/html2canvas@1.4.1/dist/html2canvas.min.js');
+  await lazyScript('https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js');
+  const w=resmiKart(resmiRender(md));
+  try{
+    const cv=await html2canvas(w,{backgroundColor:'#ffffff',scale:2}); w.remove();
+    const {jsPDF}=window.jspdf; const pdf=new jsPDF('p','mm','a4');
+    const pw=210, ph=297, pxPerMm=cv.width/pw, sayfaPx=Math.floor(ph*pxPerMm); let y=0, ilk=true;
+    while(y<cv.height){ const h=Math.min(sayfaPx,cv.height-y); const sl=document.createElement('canvas'); sl.width=cv.width; sl.height=h; const cx=sl.getContext('2d'); cx.fillStyle='#fff'; cx.fillRect(0,0,sl.width,h); cx.drawImage(cv,0,y,cv.width,h,0,0,cv.width,h); if(!ilk) pdf.addPage(); ilk=false; pdf.addImage(sl.toDataURL('image/jpeg',0.92),'JPEG',0,0,pw,h/pxPerMm); y+=h; }
+    return new File([pdf.output('blob')],dosyaAdi(baslik)+'.pdf',{type:'application/pdf'});
+  }catch(e){ try{w.remove();}catch(x){} throw e; }
+}
+function resmiWordBlob(md,baslik){
+  const govde=resmiRender(md);
+  const html='<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40"><head><meta charset="utf-8"><title>'+esc(baslik)+'</title><style>@page WordSection1{size:595.3pt 841.9pt;margin:70.9pt 56.7pt 56.7pt 70.9pt}div.WordSection1{page:WordSection1}'+RESMI_CSS.replace(/\.resmi /g,'').replace(/\.resmi\{/g,'body{')+'</style></head><body><div class="WordSection1 resmi">'+govde+'</div></body></html>';
+  return new File([new Blob(['\ufeff',html],{type:'application/msword'})],dosyaAdi(baslik)+'.doc',{type:'application/msword'});
+}
+
+/* --- 📲 Müdüre gönderim paketi --- */
+let MP={mesaj:'',yazi:'',baslik:'',gerekli:false,pdf:null};
+async function mudurPaketi(kaynakMetin){
+  const d=sonAnaliz||{}; const k=kurumGet(); const mad=mudurAd();
+  const mevcut=kaynakMetin||'';
+  modal6('📲 '+mad+' Bey\'e gönderim','<div class="spin"><div class="sp"></div><span id="spMsg">Mesaj ve resmî yazı hazırlanıyor…</span><b id="mpSure" style="color:var(--seal)"></b></div><div class="note">Evrakı okuyup müdürüne gidecek her şeyi senin adına yazıyorum.</div>');
+  const bas=Date.now(); const zt=setInterval(()=>{ const e=document.getElementById('mpSure'); if(!e){ clearInterval(zt); return; } e.textContent=' · '+Math.round((Date.now()-bas)/1000)+' sn'; },1000);
+  const bugun=new Date().toLocaleDateString('tr-TR');
+  const istem='Bugün '+bugun+'.\n'+kurumMetni()+'\n\nGELEN EVRAK ÇÖZÜMLEMESİ:\n'+JSON.stringify({konu:d.konu,gonderen_makam:d.gonderen_makam,sayi:d.sayi,tarih:d.tarih,ne_isteniyor:d.ne_isteniyor,benden_isteniyor:d.benden_isteniyor,son_tarih:d.son_tarih,detaylar:d.detaylar,istenen_ekler:d.istenen_ekler,belgedeki_linkler:d.belgedeki_linkler,ilgili_gorev:d.ilgili_gorev,gonderilecek_makam:d.gonderilecek_makam,yarisma:d.yarisma})+
+    (mevcut?('\n\nKULLANICININ HAZIRLADIĞI BELGE (resmî yazı olarak bunu kullan, gerekirse düzelt):\n'+mevcut):'')+
+    '\n\nGÖREV: Kullanıcı, okul müdürü '+mad+' Bey\'e WhatsApp\'tan yazacak. YALNIZCA şu JSON\'u döndür:\n'+
+    '{"resmi_yazi_gerekli":true|false,"neden":"tek cümle","whatsapp_mesaji":"...","resmi_yazi":"... (markdown, gerekmiyorsa boş)","baslik":"kısa dosya başlığı"}\n'+
+    'KURALLAR:\n- whatsapp_mesaji "Selam '+hitapAd(mad)+' Hocam," ile başlasın; samimi ama saygılı, kısa (en fazla 6 satır): hangi yazı geldi (makam, konu), ne isteniyor, son gün ve saat, senden ne rica ediyorum (örn. "DYS\'den imzalayıp ilçeye göndermeniz yeterli" ya da "formu ben doldurdum, bilginize"). Resmî yazı varsa "Resmî yazıyı ekte PDF ve Word olarak gönderiyorum" de. Emoji kullanma. İmza: '+(k.ad||'[Adın]')+'.\n'+
+    '- resmi_yazi_gerekli: Gelen yazı okul müdürlüğünden yazılı bir cevap, liste, onay, görevlendirme ya da üst yazı istiyorsa true. Yalnızca form doldurma, bilgi edinme veya kişisel başvuru ise false.\n'+
+    '- resmi_yazi: MEB Resmî Yazışma Yönetmeliği\'ne TAM uygun, OKUL MÜDÜRLÜĞÜ adına, müdür '+mad+' imzalı, gönderilmeye hazır yazı: ortalı "T.C." / "BEYLİKDÜZÜ KAYMAKAMLIĞI" / "Özel Değişim Koleji Müdürlüğü"; "Sayı:" (bilinmiyorsa E-[...] bırak) ve sağda tarih '+bugun+'; "Konu:"; ortalı ve BÜYÜK HARFLE hitap (örn. "BEYLİKDÜZÜ İLÇE MİLLÎ EĞİTİM MÜDÜRLÜĞÜNE"); "İlgi:" satırında gelen yazının tarihi ve sayısı; gövde; üst makama "Bilgilerinizi ve gereğini arz ederim." kapanışı; sağda imza bloğu (Ad SOYAD, Okul Müdürü); gerekiyorsa "Ek:" listesi. Kullanıcının adını ve görevini doğru kullan. Bilinmeyen kişi/sayıları UYDURMA, [ ] bırak; ama kadrodaki isimleri kullan.';
+  try{
+    let raw=await generateContent([{text:istem}],{json:true,temperature:0.2,system:'Sen MEB resmî yazışma uzmanı ve okul idaresi asistanısın. Yalnızca istenen JSON\'u üret.'});
+    raw=String(raw).replace(/```json|```/g,'').trim(); const m=raw.match(/\{[\s\S]*\}/); const j=JSON.parse(m?m[0]:raw);
+    MP={mesaj:String(j.whatsapp_mesaji||'').trim(),yazi:String(j.resmi_yazi||'').trim(),baslik:String(j.baslik||d.konu||'Resmi Yazi').trim(),gerekli:!!j.resmi_yazi_gerekli && !!String(j.resmi_yazi||'').trim(),neden:j.neden||'',pdf:null};
+    if(MP.gerekli){ arsivKaydet('Müdüre: '+MP.baslik,MP.yazi); }
+    mudurPaketiCiz();
+  }catch(e){
+    clearInterval(zt);
+    document.getElementById('hosBody').innerHTML='<p style="color:var(--err)">⚠️ '+esc((e&&e.kullanici)||'Hazırlanamadı.')+'</p><div class="btnrow"><button class="btn pri" onclick="mudurPaketi()">🔄 Tekrar dene</button></div>';
+  }
+}
+function mudurPaketiCiz(){
+  const tel=waNumara(mudurTel()); const mad=mudurAd();
+  let h='';
+  h+='<div class="kutu" style="margin-top:0;background:#f0fdf4;border-color:#86efac"><b>✅ Hazır.</b> '+(MP.gerekli?'Selam mesajı ve müdür imzalı resmî yazı hazırlandı.':'Bu evrak için resmî yazı gerekmiyor — kısa bir bilgi mesajı yeterli.')+(MP.neden?('<div class="note">'+esc(MP.neden)+'</div>'):'')+'</div>';
+  h+='<label class="fl">💬 WhatsApp mesajı <span class="note" style="font-weight:400">(istersen düzelt)</span></label><textarea id="mpMesaj" style="min-height:150px">'+esc(MP.mesaj)+'</textarea>';
+  if(MP.gerekli){
+    const kontrol=resmiKontrol(MP.yazi); const eksik=kontrol.filter(x=>!x.ok);
+    h+='<label class="fl">📄 Resmî yazı (müdür imzalı)</label><div style="background:#fff;border:1px solid #d1d5db;border-radius:8px;padding:18px 16px;max-height:280px;overflow:auto"><style>'+RESMI_CSS+'</style><div class="resmi">'+resmiRender(MP.yazi)+'</div></div>';
+    h+='<div class="note">'+(eksik.length?('⚠️ Kontrol: '+eksik.map(x=>esc(x.m)).join(' · ')):'🛡️ Resmî yazı kontrolü: her şey yerinde ✅')+'</div>';
+  }
+  h+='<div style="display:grid;gap:10px;margin-top:14px">';
+  h+='<button class="btn pri buyukBtn" onclick="mpMesajGonder()">1️⃣ 🟢 Mesajı WhatsApp\'ta '+esc(mad)+' Bey\'e aç</button>';
+  if(MP.gerekli) h+='<button class="btn tl buyukBtn" onclick="mpDosyaGonder()">2️⃣ 📄 Resmî yazıyı (PDF + Word) WhatsApp\'tan gönder</button>';
+  h+='</div>';
+  if(!tel) h+='<div class="kutu"><b>📞 '+esc(mad)+' Bey\'in numarası kayıtlı değil.</b> Bir kez yaz, sonra mesaj doğrudan onun sohbetinde açılır:<div style="display:flex;gap:8px;margin-top:8px"><input id="mpTel" type="tel" inputmode="tel" placeholder="05xx xxx xx xx"><button class="btn gh" onclick="mpTelKaydet()">💾</button></div></div>';
+  h+='<div class="btnrow">'+(MP.gerekli?'<button class="btn gh sm" onclick="mpDuzenle()">✏️ Yazıyı düzenle</button><button class="btn gh sm" onclick="resmiWord(MP.yazi,MP.baslik)">📝 Word indir</button><button class="btn gh sm" onclick="resmiPdf(MP.yazi,MP.baslik)">📄 PDF indir</button>':'')+'<button class="btn gh sm" onclick="mpKopya()">📋 Mesajı kopyala</button></div>';
+  h+='<div class="note">Not: WhatsApp kuralı gereği son "gönder" dokunuşu sende. iPhone\'da dosya paylaşımında WhatsApp → '+esc(mad)+' Bey\'i seçmen yeterli.</div>';
+  document.getElementById('hosT').textContent='📲 '+mad+' Bey\'e gönderim';
+  document.getElementById('hosBody').innerHTML=h;
+  if(MP.gerekli){ resmiPdfBlob(MP.yazi,MP.baslik).then(f=>{ MP.pdf=f; }).catch(()=>{}); }
+}
+function mpMesajMetni(){ const t=document.getElementById('mpMesaj'); if(t) MP.mesaj=t.value.trim(); return MP.mesaj; }
+function mpTelKaydet(){ const v=(document.getElementById('mpTel')||{}).value||''; if(!v.replace(/\D/g,'')) return toast('Numarayı yaz'); const k=kurumGet(); k.mudurTel=v.trim(); localStorage.setItem(LS.kurum,JSON.stringify(k)); toast('💾 Numara kaydedildi'); mudurPaketiCiz(); }
+function mpMesajGonder(){
+  const m=mpMesajMetni(); const tel=waNumara(mudurTel());
+  try{ navigator.clipboard&&navigator.clipboard.writeText(m).catch(()=>{}); }catch(e){}
+  const u='https://wa.me/'+(tel||'')+'?text='+encodeURIComponent(m);
+  window.open(u,'_blank') || (location.href=u);
+  toast('🟢 WhatsApp açılıyor — mesaj panoya da kopyalandı');
+}
+async function mpDosyaGonder(){
+  toast('📄 PDF hazırlanıyor…');
+  try{
+    const pdf=MP.pdf||await resmiPdfBlob(MP.yazi,MP.baslik); MP.pdf=pdf;
+    const doc=resmiWordBlob(MP.yazi,MP.baslik);
+    const dosyalar=[pdf,doc];
+    if(navigator.canShare && navigator.canShare({files:dosyalar})){ await navigator.share({files:dosyalar,title:MP.baslik}); return; }
+    if(navigator.canShare && navigator.canShare({files:[pdf]})){ await navigator.share({files:[pdf],title:MP.baslik}); return; }
+    const a=document.createElement('a'); a.href=URL.createObjectURL(pdf); a.download=pdf.name; document.body.appendChild(a); a.click(); a.remove();
+    toast('📄 PDF indirildi — WhatsApp\'ta ataç ile ekle');
+  }catch(e){ if(e && e.name==='AbortError') return; toast('Paylaşılamadı — 📄 PDF indir düğmesini kullan'); }
+}
+function mpKopya(){ const m=mpMesajMetni(); navigator.clipboard.writeText(m).then(()=>toast('📋 Mesaj kopyalandı')).catch(()=>toast('Kopyalanamadı')); }
+function mpDuzenle(){
+  document.getElementById('hosBody').innerHTML='<label class="fl">Resmî yazı</label><textarea id="mpYazi" style="min-height:360px;font-family:Times New Roman,serif">'+esc(MP.yazi)+'</textarea><div class="btnrow"><button class="btn pri" onclick="MP.yazi=document.getElementById(\'mpYazi\').value;MP.pdf=null;arsivKaydet(\'Müdüre: \'+MP.baslik,MP.yazi);mudurPaketiCiz()">💾 Kaydet</button><button class="btn gh" onclick="mudurPaketiCiz()">Vazgeç</button></div>';
+}
+/* Belge editöründen de: mevcut taslakla müdüre gönder */
+const _eskiOvFootCiz=ovFootCiz;
+window.ovFootCiz=function(){ _eskiOvFootCiz(); const f=document.getElementById('ovFoot'); if(f) f.insertAdjacentHTML('afterbegin','<button class="btn tl sm" onclick="ovKapat();mudurPaketi(aiSonMetin)">🟢 Müdüre gönder</button>'); };
 </script>
 <script id="baris-kasa">
 (function(){ var VARSAYILAN='https://baris-kasa.barilkay466.workers.dev'; try{ var u0=localStorage.getItem('zkasa_url'); if(u0) window.ZKASA_URL=u0; }catch(e){}
