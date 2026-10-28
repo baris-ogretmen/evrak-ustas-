@@ -852,7 +852,7 @@ async function _tekModelUret(mdl, parts, opt){
     try{
       if(!akis) throw new Error('nonstream');
       const url='https://generativelanguage.googleapis.com/v1beta/models/'+mdl+':streamGenerateContent?alt=sse&key='+key;
-      const r = await sureliFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},Math.min(38000,aiKalan()));
+      const r = await sureliFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},Math.min(100000,aiKalan()));
       if(!r.ok){
         const tx = await r.text(); lastErr = hataMetni(r.status,tx);
         if(r.status===404 || (r.status===400 && /not found|not supported|does not exist|is not found/i.test(tx))) throw {modelYok:true,kullanici:lastErr};
@@ -880,10 +880,11 @@ async function _tekModelUret(mdl, parts, opt){
       throw new Error('empty');
     }catch(e){
       if(e && (e.modelYok||e.zaman)) throw e;
+      if(e && e.name==='AbortError'){ lastErr='Yapay zekâ çok uzun süre yanıt vermedi.'; window._sonHamHata='zaman aşımı · '+mdl+' · '+Math.round((Date.now()-(window._aiBas||Date.now()))/1000)+' sn'; continue; }
       try{
         const url='https://generativelanguage.googleapis.com/v1beta/models/'+mdl+':generateContent?key='+key;
         if(aiKalan()<4000) throw {kullanici:'Yapay zekâ şu an çok yavaş yanıt veriyor. Biraz sonra 🔄 Tekrar dene; sürerse ⚙️ Ayarlar → 🔐 Anahtar kasası → 🩺 Test et.',zaman:true};
-        const r2=await sureliFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},Math.min(38000,aiKalan()));
+        const r2=await sureliFetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)},Math.min(100000,aiKalan()));
         if(!r2.ok){ const tx=await r2.text(); lastErr=hataMetni(r2.status,tx);
           if(r2.status===404 || (r2.status===400 && /not found|not supported|does not exist/i.test(tx))) throw {modelYok:true,kullanici:lastErr};
           if(r2.status===400 && /responseMimeType|response_mime_type/i.test(tx) && body.generationConfig.responseMimeType){ delete body.generationConfig.responseMimeType; t--; continue; }
@@ -896,7 +897,8 @@ async function _tekModelUret(mdl, parts, opt){
         const tx=d?.candidates?.[0]?.content?.parts?.map(p=>p.text||'').join('')||'';
         if(tx){ kotaTemizle(key); onChunk&&onChunk(tx); return tx; }
         lastErr='Boş yanıt döndü.'; continue;
-      }catch(e2){ if(e2 && (e2.modelYok||e2.zaman)) throw e2; lastErr=(e2&&e2.name==='AbortError')?'Yapay zekâ şu an yoğun, biraz sonra tekrar deneyin.':(lastErr||'İnternete ulaşılamadı, bağlantını kontrol edip tekrar dene.'); continue; }
+      }catch(e2){ if(e2 && (e2.modelYok||e2.zaman)) throw e2; if(e2&&e2.name==='AbortError') window._sonHamHata='zaman aşımı · '+mdl+' · '+Math.round((Date.now()-(window._aiBas||Date.now()))/1000)+' sn'; else if(e2 && !e2.kullanici) window._sonHamHata='ağ hatası · '+mdl+' · '+String(e2.message||e2).slice(0,120);
+        lastErr=(e2&&e2.name==='AbortError')?'Yapay zekâ çok uzun süre yanıt vermedi.':(lastErr||'İnternete ulaşılamadı, bağlantını kontrol edip tekrar dene.'); continue; }
     }
   }
   throw {kullanici:lastErr||'Bu modelde yanıt alınamadı.'};
@@ -905,7 +907,7 @@ async function _tekModelUret(mdl, parts, opt){
 /* Çekirdek üretim — metin + görsel/PDF (vision). Her anahtar × her model denenir; model bulunamazsa sıradakine geçer. */
 async function generateContent(parts, {onChunk, system, json, temperature}={}){
   if(!RING.keys.length && !kasaAcik()){ throw {kullanici:'Yapay zekâ bağlı değil — ⚙️ Ayarlar → 🔐 Anahtar kasası\'nı kontrol et.'}; }
-  const _disCagri=!window._aiBitis; if(_disCagri) window._aiBitis=Date.now()+(parts.some(p=>p.inlineData)?60000:45000);
+  const _disCagri=!window._aiBitis; if(_disCagri){ window._aiBas=Date.now(); window._sonHamHata=''; } if(_disCagri) window._aiBitis=Date.now()+(parts.some(p=>p.inlineData)?150000:110000);
   try{
   if(!window._modelListesi || !window._modelListesi.length){ await modelKesfet(true); }
   const body = { contents:[{role:'user',parts}], generationConfig:{ temperature:(temperature!=null?temperature:0.6), thinkingConfig:{thinkingBudget:0} } };
@@ -1203,10 +1205,10 @@ function gorselKucult(dataUrl){
   return new Promise(res=>{
     const img=new Image();
     img.onload=()=>{ try{
-      const MAX=1600; let w=img.naturalWidth, h=img.naturalHeight; if(!w||!h) return res(null);
+      const MAX=1280; let w=img.naturalWidth, h=img.naturalHeight; if(!w||!h) return res(null);
       const k=Math.min(1,MAX/Math.max(w,h)); w=Math.round(w*k); h=Math.round(h*k);
       const c=document.createElement('canvas'); c.width=w; c.height=h; const x=c.getContext('2d'); x.fillStyle='#fff'; x.fillRect(0,0,w,h); x.drawImage(img,0,0,w,h);
-      res(c.toDataURL('image/jpeg',0.8)); }catch(e){ res(null); } };
+      res(c.toDataURL('image/jpeg',0.75)); }catch(e){ res(null); } };
     img.onerror=()=>res(null); img.src=dataUrl;
   });
 }
@@ -1369,7 +1371,7 @@ async function evrakAnaliz(){
   window._analizSuruyor=true;
   const btn=document.getElementById('analizBtn'); if(btn) btn.disabled=true;
   const sonuc=document.getElementById('analizSonuc');
-  sonuc.innerHTML='<div class="panel"><div class="spin"><div class="sp"></div><span id="spMsg">Evrak okunuyor…</span></div><div class="note">Belgeyi okuyorum, seni ilgilendiren kısmı ve senden isteneni çıkarıyorum; ardından gereken belgeleri senin adına hazırlayacağım.</div></div>';
+  sonuc.innerHTML='<div class="panel"><div class="spin"><div class="sp"></div><span id="spMsg">Evrak okunuyor…</span></div><div class="note">Genelde 10-40 saniye sürer, uzun evraklarda 1-2 dakikayı bulabilir — sayfayı kapatma. Belgeyi okuyorum, seni ilgilendiren kısmı ve senden isteneni çıkarıyorum; ardından gereken belgeleri senin adına hazırlayacağım.</div></div>';
   sonuc.scrollIntoView({behavior:'smooth',block:'start'});
   const _bas=Date.now(); clearInterval(window._sureSay); window._sureSay=setInterval(()=>{ const e=document.getElementById('spSure'); if(!e||!window._analizSuruyor){ clearInterval(window._sureSay); return; } e.textContent=' · '+Math.round((Date.now()-_bas)/1000)+' sn'; },1000);
   try{ const sp=document.getElementById('spMsg'); if(sp) sp.insertAdjacentHTML('afterend','<b id="spSure" style="color:var(--seal)"></b>'); }catch(e){}
@@ -1415,7 +1417,7 @@ async function evrakAnaliz(){
     sonAnaliz=data; PAKET={};
     analizGoster(data);
   }catch(e){
-    sonuc.innerHTML='<div class="panel"><p style="color:var(--err);margin:0 0 8px">⚠️ '+esc(e.kullanici||'Çözümlenemedi — evrak net okunamamış olabilir.')+'</p><div class="btnrow" style="margin-top:4px"><button class="btn pri sm" onclick="evrakAnaliz()">🔄 Tekrar dene</button><button class="btn gh sm" onclick="kasaTestHizli()">🩺 Kasayı test et</button></div>'+(window._sonHamHata?'<details class="note"><summary>🔧 Ayrıntı (sorun sürerse ekran görüntüsünü bana gönder)</summary><code style="word-break:break-all">'+esc(window._sonHamHata)+'</code></details>':'')+'<p class="note">İpucu: Fotoğraf bulanıksa yeniden çek ya da evrak metnini kutuya yapıştır.</p></div>';
+    sonuc.innerHTML='<div class="panel"><p style="color:var(--err);margin:0 0 8px">⚠️ '+esc(e.kullanici||'Çözümlenemedi — evrak net okunamamış olabilir.')+'</p><div class="btnrow" style="margin-top:4px"><button class="btn pri sm" onclick="evrakAnaliz()">🔄 Tekrar dene</button><button class="btn gh sm" onclick="kasaTestHizli()">🩺 Kasayı test et</button></div>'+(window._sonHamHata?'<details class="note" open><summary>🔧 Ayrıntı (sorun sürerse ekran görüntüsünü bana gönder)</summary><code style="word-break:break-all">'+esc(window._sonHamHata)+'</code></details>':'')+'<p class="note">İpucu: Fotoğraf bulanıksa yeniden çek ya da evrak metnini kutuya yapıştır.</p></div>';
   }finally{ spinDur(); window._analizSuruyor=false; if(btn) btn.disabled=false; }
 }
 function onemHesapla(d){
@@ -2481,7 +2483,7 @@ async function pwaYukle(){
 }
 
 /* ============ SÜRÜM ROZETİ + ÖZ-KONTROL ============ */
-const APP={surum:'6.3',tarih:'28.10.2026',satir:3788,kb:487,onceki:{surum:'6.2',satir:3598,kb:467},
+const APP={surum:'6.4',tarih:'28.10.2026',satir:3792,kb:488,onceki:{surum:'6.3',satir:3787,kb:487},
   yenilikler:['📡 Etkinlik Radarı (Beylikdüzü öncelikli satranç, akıl-zekâ, robotik, yapay zekâ, proje)','🔔 Telefona bildirim + otomatik hatırlatmalar (baris-kasa)','🛡️ Gönderim öncesi resmî yazı kontrolü','📱 Yeni simge, açılış ekranı, alt menü, sade ekran','🔐 Yapay zekâ anahtarları kasada; teknik hata kodu yok']};
 const MODULLER=['generateContent','radarCiz','modelKesfet','anahtarSirala','evrakAnaliz','analizGoster','paketBaslat','belgeUret','taslakUret','aiTakip','gerekenlerCiz','kadroListe','resmiRender','resmiPdf','resmiWord','gonderModalAc','takipCiz','icsIndir','tarihCoz','arsivCiz','initPWA','surumKontrol'];
 function modulKontrol(){ return MODULLER.map(f=>({f,ok:typeof window[f]==='function'})); }
@@ -2557,8 +2559,9 @@ init();
    v6 — BARIŞ KASA · BİLDİRİM · ETKİNLİK RADARI · GERÇEK UYGULAMA
    Kasa: baris-kasa · uyg: evrak
    ============================================================ */
-const SURUM=6.3;
+const SURUM=6.4;
 const YENILIKLER=[
+  '⏳ Evrak çözümleme artık yarıda kesilmiyor: yapay zekâya 2,5 dakikaya kadar zaman tanınır, geçen süre canlı görünür',
   '📲 Müdüre tek dokunuş: selam mesajı + müdür imzalı resmî yazı (PDF/Word) hazır, WhatsApp\'ta onun sohbeti açılır',
   '🌟 Fırsat bandı: çalışmalarını gösterebileceğin çağrılar sarı bantla öne çıkar; başvuru metnin tek dokunuşla hazır',
   '🚨 Seni doğrudan ilgilendiren önemli evrak kırmızı "ÇOK ÖNEMLİ" bandıyla en üstte; son gün ve link tek dokunuşta',
@@ -3460,8 +3463,9 @@ function surumYenile(){ location.replace(sayfaUrl('')+'?v='+Date.now()+location.
 
 async function kasaTestHizli(){
   toast('🩺 Kasa deneniyor…');
+  const t0=Date.now();
   try{ const r=await fetch(kasaUrl()+'/g/v1beta/models/gemini-2.5-flash:generateContent',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({contents:[{parts:[{text:'Sadece tamam yaz.'}]}]})});
-    const t=await r.text(); if(r.ok){ toast('🟢 Kasa ve yapay zekâ çalışıyor — 🔄 Tekrar dene'); localStorage.setItem('evrak_ai_uyum','2'); } else { window._sonHamHata='test '+r.status+' · '+t.replace(/\s+/g,' ').slice(0,260); toast('🔴 Kasa yanıtı: '+r.status+' — Ayrıntı kutusunda'); } }
+    const t=await r.text(); const sn=((Date.now()-t0)/1000).toFixed(1); window._sonHamHata='test '+r.status+' · '+sn+' sn · '+t.replace(/\s+/g,' ').slice(0,200); if(r.ok){ toast('🟢 Kasa çalışıyor ('+sn+' sn) — 🔄 Tekrar dene'); localStorage.setItem('evrak_ai_uyum','2'); } else { window._sonHamHata='test '+r.status+' · '+t.replace(/\s+/g,' ').slice(0,260); toast('🔴 Kasa yanıtı: '+r.status+' — Ayrıntı kutusunda'); } }
   catch(e){ toast('🔴 Kasaya ulaşılamadı — internetini kontrol et'); }
 }
 /* ---------- Gönderim öncesi resmî yazı kontrolü ---------- */
